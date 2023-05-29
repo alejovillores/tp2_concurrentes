@@ -21,3 +21,26 @@ impl Default for ProbabilityCalculator {
         Self::new()
     }
 }
+
+
+
+#[cfg(test)]
+mod coffee_maker_test {
+    use mockall_double::double;
+    #[double]
+    use crate::utils::probablity_calculator::ProbabilityCalculator;
+    // Mocks
+
+    #[test]
+    fn it_returns_true() {
+        let mut  mock = ProbabilityCalculator::default(); 
+        mock.expect_calculate_probability().returning(|_| true);
+    }
+
+
+    #[test]
+    fn it_returns_false() {
+        let mut  mock = ProbabilityCalculator::default(); 
+        mock.expect_calculate_probability().returning(|_| false);
+    }
+}

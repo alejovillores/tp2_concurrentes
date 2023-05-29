@@ -35,7 +35,7 @@ impl Handler<Order> for CoffeeMaker {
 
     fn handle(&mut self, msg: Order, _ctx: &mut <CoffeeMaker as Actor>::Context) -> Self::Result {
         //TODO: chequeo de si tiene puntos
-
+        
         //TODO: agregar probabilidad de fallar
         if self.calculator.calculate_probability(self.probability) {
             return COFFE_MADE;
