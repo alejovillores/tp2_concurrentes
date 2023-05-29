@@ -1,6 +1,6 @@
 use actix::Actor;
 use coffee_maker::{
-    coffee_maker::CoffeeMaker, messages::order::Order,
+    coffee_maker::CoffeeMaker, messages::points_consuming_order::PointsConsumingOrder,
     utils::probablity_calculator::ProbabilityCalculator,
 };
 
@@ -13,7 +13,7 @@ async fn main() {
     let coffee_maker_actor = CoffeeMaker::new(PROBABLITY, probablity_calculator).start();
 
     let res = coffee_maker_actor
-        .send(Order { coffe_points: 10 })
+        .send(PointsConsumingOrder { coffe_points: 10 })
         .await
         .unwrap();
     print!("{}", res)
