@@ -14,3 +14,8 @@
 ## Estructura de los locales
 
 ![Servidores](servidores.png)
+
+
+
+## Diagrama de clases Coffee Maker
+![CoffeeMaker Diagram](coffee_maker_diagram.png)
