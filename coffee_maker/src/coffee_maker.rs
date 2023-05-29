@@ -43,7 +43,6 @@ impl Handler<Order> for CoffeeMaker {
 
 #[cfg(test)]
 mod coffee_maker_test {
-    use actix::actors::mocker::Mocker;
 
     use super::*;
 
