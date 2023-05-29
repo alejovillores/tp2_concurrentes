@@ -34,9 +34,6 @@ impl Handler<Order> for CoffeeMaker {
     type Result = u32;
 
     fn handle(&mut self, msg: Order, _ctx: &mut <CoffeeMaker as Actor>::Context) -> Self::Result {
-        //TODO: chequeo de si tiene puntos
-        
-        //TODO: agregar probabilidad de fallar
         if self.calculator.calculate_probability(self.probability) {
             return COFFE_MADE;
         }
@@ -46,10 +43,31 @@ impl Handler<Order> for CoffeeMaker {
 
 #[cfg(test)]
 mod coffee_maker_test {
+    use actix::actors::mocker::Mocker;
 
-    #[test]
-    fn it_works() {
-        let result = 2 + 2;
-        assert_eq!(result, 4);
+    use super::*;
+
+    #[actix_rt::test]
+    async fn test_actor_receives_order_and_succes() {
+
+        let mut mock_calculator = ProbabilityCalculator::default(); 
+        mock_calculator.expect_calculate_probability().returning(|_| true);
+        
+        let actor = CoffeeMaker::new(0.8,mock_calculator).start();
+        let res = actor.send(Order { coffe_points: 10 });
+
+        assert_eq!(res.await.unwrap(),0)
+    }
+
+    #[actix_rt::test]
+    async fn test_actor_receives_order_and_fail() {
+
+        let mut mock_calculator = ProbabilityCalculator::default(); 
+        mock_calculator.expect_calculate_probability().returning(|_| false);
+        
+        let actor = CoffeeMaker::new(0.8,mock_calculator).start();
+        let res = actor.send(Order { coffe_points: 10 });
+
+        assert_eq!(res.await.unwrap(),10)
     }
 }
