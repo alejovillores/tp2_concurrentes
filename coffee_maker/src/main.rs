@@ -1,5 +1,5 @@
-use coffee_maker::{coffee_maker::{CoffeeMaker}, messages::order::Order};
 use actix::Actor;
+use coffee_maker::{coffee_maker::CoffeeMaker, messages::order::Order};
 
 const PROBABLITY: f64 = 0.8;
 
@@ -7,6 +7,9 @@ const PROBABLITY: f64 = 0.8;
 async fn main() {
     //let coffee_maker_arbitrer = SyncArbiter::start(2, || CoffeeMaker {});
     let coffee_maker_actor = CoffeeMaker::new(PROBABLITY).start();
-    let res = coffee_maker_actor.send(Order{coffe_points: 10}).await.unwrap();
-    print!("{}",res)
+    let res = coffee_maker_actor
+        .send(Order { coffe_points: 10 })
+        .await
+        .unwrap();
+    print!("{}", res)
 }

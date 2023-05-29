@@ -1,22 +1,20 @@
-use actix::{Actor, ResponseActFuture, Handler, Message, SyncContext, Context};
-use log::{info, warn};
+use actix::{Actor, Context, Handler};
 
 use crate::messages::order::Order;
 
+#[allow(dead_code)]
 pub struct CoffeeMaker {
-    probability: f64
+    probability: f64,
 }
 
 impl CoffeeMaker {
     pub fn new(probability: f64) -> Self {
-        if probability > 1 as f64 || probability < 0 as f64  {
+        if !(0_f64..=1_f64).contains(&probability){
             panic!("[error] - probability must be a float number between 0 - 1")
         }
 
-        Self {
-            probability
-        }
-    }    
+        Self { probability }
+    }
 }
 
 impl Actor for CoffeeMaker {
@@ -24,21 +22,18 @@ impl Actor for CoffeeMaker {
 }
 
 impl Handler<Order> for CoffeeMaker {
-
     type Result = u32;
 
-    fn handle(&mut self, msg: Order, _ctx: &mut <CoffeeMaker as Actor>::Context) -> Self::Result  {
-        //TODO: chequeo de si tiene puntos 
+    fn handle(&mut self, msg: Order, _ctx: &mut <CoffeeMaker as Actor>::Context) -> Self::Result {
+        //TODO: chequeo de si tiene puntos
+
         //TODO: agregar probabilidad de fallar
         msg.coffe_points
     }
-
 }
-
 
 #[cfg(test)]
 mod coffee_maker_test {
-    use super::*;
 
     #[test]
     fn it_works() {
