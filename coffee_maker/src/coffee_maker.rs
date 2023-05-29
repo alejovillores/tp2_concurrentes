@@ -1,19 +1,28 @@
-use actix::{Actor, Context, Handler};
-
 use crate::messages::order::Order;
+use actix::{Actor, Context, Handler};
+use mockall_double::double;
+
+#[double]
+use crate::utils::probablity_calculator::ProbabilityCalculator;
+
+const COFFE_MADE: u32 = 0;
 
 #[allow(dead_code)]
 pub struct CoffeeMaker {
     probability: f64,
+    calculator: ProbabilityCalculator,
 }
 
 impl CoffeeMaker {
-    pub fn new(probability: f64) -> Self {
-        if !(0_f64..=1_f64).contains(&probability){
+    pub fn new(probability: f64, calculator: ProbabilityCalculator) -> Self {
+        if !(0_f64..=1_f64).contains(&probability) {
             panic!("[error] - probability must be a float number between 0 - 1")
         }
 
-        Self { probability }
+        Self {
+            probability,
+            calculator,
+        }
     }
 }
 
@@ -28,6 +37,9 @@ impl Handler<Order> for CoffeeMaker {
         //TODO: chequeo de si tiene puntos
 
         //TODO: agregar probabilidad de fallar
+        if self.calculator.calculate_probability(self.probability) {
+            return COFFE_MADE;
+        }
         msg.coffe_points
     }
 }
