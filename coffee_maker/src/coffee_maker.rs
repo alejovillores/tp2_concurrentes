@@ -17,15 +17,15 @@ pub struct CoffeeMaker {
 }
 
 impl CoffeeMaker {
-    pub fn new(probability: f64, calculator: ProbabilityCalculator) -> Self {
+    pub fn new(probability: f64, calculator: ProbabilityCalculator) -> Result<CoffeeMaker, String> {
         if !(0_f64..=1_f64).contains(&probability) {
-            panic!("[error] - probability must be a float number between 0 - 1")
+            return Err("[error] - probability must be a float number between 0 - 1".to_string())
         }
 
-        Self {
-            probability,
-            calculator,
-        }
+        Ok( Self {
+                probability,
+                calculator
+            })
     }
 }
 
@@ -77,7 +77,7 @@ mod coffee_maker_test {
             .expect_calculate_probability()
             .returning(|_| true);
 
-        let actor = CoffeeMaker::new(0.8, mock_calculator).start();
+        let actor = CoffeeMaker::new(0.8, mock_calculator).unwrap().start();
         let res = actor.send(PointsConsumingOrder { coffe_points: 10 });
 
         assert_eq!(res.await.unwrap(), 0)
@@ -90,7 +90,7 @@ mod coffee_maker_test {
             .expect_calculate_probability()
             .returning(|_| false);
 
-        let actor = CoffeeMaker::new(0.8, mock_calculator).start();
+        let actor = CoffeeMaker::new(0.8, mock_calculator).unwrap().start();
         let res = actor.send(PointsConsumingOrder { coffe_points: 10 });
 
         assert_eq!(res.await.unwrap(), 10)
@@ -103,7 +103,7 @@ mod coffee_maker_test {
             .expect_calculate_probability()
             .returning(|_| true);
 
-        let actor = CoffeeMaker::new(0.8, mock_calculator).start();
+        let actor = CoffeeMaker::new(0.8, mock_calculator).unwrap().start();
         let res = actor.send(PointEarningOrder { coffe_points: 10 });
 
         assert_eq!(res.await.unwrap(), 10)
@@ -116,7 +116,7 @@ mod coffee_maker_test {
             .expect_calculate_probability()
             .returning(|_| false);
 
-        let actor = CoffeeMaker::new(0.8, mock_calculator).start();
+        let actor = CoffeeMaker::new(0.8, mock_calculator).unwrap().start();
         let res = actor.send(PointEarningOrder { coffe_points: 10 });
 
         assert_eq!(res.await.unwrap(), 0)
