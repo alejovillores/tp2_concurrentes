@@ -19,13 +19,13 @@ pub struct CoffeeMaker {
 impl CoffeeMaker {
     pub fn new(probability: f64, calculator: ProbabilityCalculator) -> Result<CoffeeMaker, String> {
         if !(0_f64..=1_f64).contains(&probability) {
-            return Err("[error] - probability must be a float number between 0 - 1".to_string())
+            return Err("[error] - probability must be a float number between 0 - 1".to_string());
         }
 
-        Ok( Self {
-                probability,
-                calculator
-            })
+        Ok(Self {
+            probability,
+            calculator,
+        })
     }
 }
 

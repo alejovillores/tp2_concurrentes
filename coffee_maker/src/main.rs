@@ -10,16 +10,16 @@ const PROBABLITY: f64 = 0.8;
 async fn main() {
     //let coffee_maker_arbitrer = SyncArbiter::start(2, || CoffeeMaker {});
     let probablity_calculator = ProbabilityCalculator::new();
-    match CoffeeMaker::new(PROBABLITY, probablity_calculator){
+    match CoffeeMaker::new(PROBABLITY, probablity_calculator) {
         Ok(coffee_maker_actor) => {
             let addr = coffee_maker_actor.start();
-            
+
             let res = addr
                 .send(PointsConsumingOrder { coffe_points: 10 })
                 .await
                 .unwrap();
             print!("{}", res)
         }
-        Err(e) => print!("{}",e)
+        Err(e) => print!("{}", e),
     }
 }
