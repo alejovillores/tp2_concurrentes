@@ -1,7 +1,12 @@
-use crate::messages::{
-    points_consuming_order::PointsConsumingOrder, points_earning_order::PointEarningOrder,
+use crate::{
+    messages::{
+        points_consuming_order::{PointsConsumingOrder},
+        points_earning_order::PointEarningOrder,
+        take_order::TakeOrder,
+    },
+    order::Order,
 };
-use actix::{Actor, Context, Handler};
+use actix::{Actor, Context, Handler, Message};
 use mockall_double::double;
 
 #[double]
@@ -19,13 +24,13 @@ pub struct CoffeeMaker {
 impl CoffeeMaker {
     pub fn new(probability: f64, calculator: ProbabilityCalculator) -> Result<CoffeeMaker, String> {
         if !(0_f64..=1_f64).contains(&probability) {
-            return Err("[error] - probability must be a float number between 0 - 1".to_string())
+            return Err("[error] - probability must be a float number between 0 - 1".to_string());
         }
 
-        Ok( Self {
-                probability,
-                calculator
-            })
+        Ok(Self {
+            probability,
+            calculator,
+        })
     }
 }
 
@@ -62,6 +67,16 @@ impl Handler<PointEarningOrder> for CoffeeMaker {
             return msg.coffe_points;
         }
         COFFE_NOT_MADE
+    }
+}
+
+impl Handler<TakeOrder> for CoffeeMaker {
+    type Result = <TakeOrder as Message>::Result;
+
+    fn handle(&mut self, _msg: TakeOrder, _ctx: &mut Self::Context) -> Self::Result {
+        // read Order from file
+        Ok(Order{account_id: 1,coffee_points: 10})
+        
     }
 }
 
