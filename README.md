@@ -15,7 +15,7 @@
 ## Scripts
 
 Correr coffee maker
-`RUST_LOG=info cargo eun --bin coffee_maker` 
+`RUST_LOG=info cargo run --bin coffee_maker` 
 
 ## Estructura de los locales
 

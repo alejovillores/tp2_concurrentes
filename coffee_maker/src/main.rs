@@ -27,8 +27,12 @@ async fn main() {
     if let Ok(mut stream) = TcpStream::connect("127.0.0.1:8080") {
         info!("Connected to the server!");
 
-        // 1. Ask for points
         // TODO: Read points
+        // 1. Ask for points
+        let req_points = format!("REQ, account_id: {}, coffee_points: {} \n", 1, 20);
+        if let Ok(bytes_written) = stream.write(&req_points.as_bytes()) {
+            info!("Requested Server bytes: {}", bytes_written);
+        }
 
         // 2. Wait for OK response
         let mut res: u32;
@@ -51,9 +55,9 @@ async fn main() {
         }
 
         // 3. Send results
-        let response = format!("account_id: {}, coffee_points: {} \n", 1, res);
+        let response = format!("RES, account_id: {}, coffee_points: {} \n", 1, res);
         if let Ok(bytes_written) = stream.write(&response.as_bytes()) {
-            info!("Write to Server bytes: {}", bytes_written);
+            info!("Write results to Server bytes: {}", bytes_written);
         }
 
         // 4.  Waits for ACK
