@@ -11,6 +11,12 @@
 * [Bautista Rodriguez](https://github.com/BautistaRodriguez)
 * [Sol Fontenla](https://github.com/solfonte)
 
+
+## Scripts
+
+Correr coffee maker
+`RUST_LOG=info cargo eun --bin coffee_maker` 
+
 ## Estructura de los locales
 
 ![Servidores](servidores.png)
@@ -19,3 +25,4 @@
 
 ## Diagrama de clases Coffee Maker
 ![CoffeeMaker Diagram](coffee_maker_diagram.png)
+
