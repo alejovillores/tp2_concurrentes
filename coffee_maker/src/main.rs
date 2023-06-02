@@ -20,7 +20,8 @@ async fn main() {
     // Instanciates new calculator
     let probablity_calculator = ProbabilityCalculator::new();
 
-    let coffee_maker_actor = CoffeeMaker::new(PROBABLITY, probablity_calculator)?;
+    //FIXME: Correct unwrap 
+    let coffee_maker_actor = CoffeeMaker::new(PROBABLITY, probablity_calculator).unwrap();
     let addr = coffee_maker_actor.start();
     info!("CoffeeMaker actor is active");
 
