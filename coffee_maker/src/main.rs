@@ -49,10 +49,15 @@ async fn main() {
                         .unwrap();
                     info!("Result from Coffee Maker: {}", res);
                 } else {
+                    //FIXME - 
+                    res = 0;
                     error!("Not OK from server")
                 }
             }
-            Err(_) => error!("Error reading from TCP connection"),
+            Err(_) => {
+                //FIXME 
+                res = 0;
+                error!("Error reading from TCP connection")},
         }
 
         // 3. Send results
@@ -64,7 +69,7 @@ async fn main() {
         // 4.  Waits for ACK
         let mut ack = String::new();
         match stream.read_to_string(&mut ack) {
-            Ok(e) => {
+            Ok(_) => {
                 info!("Read response from server after writing");
                 if ack == "ACK" {
                     info!("ACK from server");
