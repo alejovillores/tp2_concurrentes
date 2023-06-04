@@ -40,19 +40,12 @@ async fn handle_client(mut stream: TcpStream, server_address: Addr<LocalServer>)
         match line {
             Ok(line) => {
                 let parts: Vec<&str> = line.split(',').map(|s| s.trim()).collect();
-                if parts.len() >= 3 {
-                    let operation = parts[0];
+                if parts.len() == 3 {
+                    let method = parts[0];
                     let customer_id: u32 = parts[1].parse().unwrap();
                     let points: u32 = parts[2].parse().unwrap();
 
-                    let result = match operation {
-                        "SUM" => {
-                            let msg = AddPoints {
-                                customer_id,
-                                points,
-                            };
-                            server_address.send(msg).await
-                        }
+                    let result = match method {
                         "REQ" => {
                             let msg = BlockPoints {
                                 customer_id,
@@ -60,15 +53,51 @@ async fn handle_client(mut stream: TcpStream, server_address: Addr<LocalServer>)
                             };
                             server_address.send(msg).await
                         }
+                        _ => {
+                            stream.write_all(b"ERR: Invalid method\n").unwrap();
+                            Err(actix::MailboxError::Closed)
+                        }
+                    };
+                    match result {
+                        Ok(res) => {
+                            stream.write_all(format!("{}\n", res).as_bytes()).unwrap();
+                        }
+                        Err(_) => {
+                            stream.write_all(b"ERR: Internal server error\n").unwrap();
+                        }
+                    }
+                }
+                else if parts.len() == 4{
+                    let method = parts[0];
+                    let operation = parts[1];
+                    let customer_id: u32 = parts[2].parse().unwrap();
+                    let points: u32 = parts[3].parse().unwrap();
+
+                    let result = match method {
                         "RES" => {
-                            let msg = SubtractPoints {
-                                customer_id,
-                                points,
-                            };
-                            server_address.send(msg).await
+                            match operation{
+                                "ADD" => {
+                                    let msg = AddPoints {
+                                        customer_id,
+                                        points,
+                                    };
+                                    server_address.send(msg).await
+                                }
+                                "SUBS" => {
+                                    let msg = SubtractPoints {
+                                        customer_id,
+                                        points,
+                                    };
+                                    server_address.send(msg).await
+                                }
+                                _ => {
+                                    stream.write_all(b"ERR: Invalid operation\n").unwrap();
+                                    Err(actix::MailboxError::Closed)
+                                }
+                            }
                         }
                         _ => {
-                            stream.write_all(b"ERR: Invalid operation\n").unwrap();
+                            stream.write_all(b"ERR: Invalid method\n").unwrap();
                             Err(actix::MailboxError::Closed)
                         }
                     };
