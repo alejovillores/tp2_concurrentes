@@ -96,7 +96,7 @@ impl Handler<TakeOrder> for CoffeeMaker {
 #[cfg(test)]
 mod coffee_maker_test {
 
-    use crate::utils::order_parser::{MockOrderParser};
+    use crate::utils::order_parser::MockOrderParser;
 
     use super::*;
 
