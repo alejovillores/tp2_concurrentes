@@ -1,5 +1,6 @@
 extern crate actix;
 
+use std::collections::HashMap;
 use actix::{Actor, Context, Handler};
 
 use crate::structs::account::Account;
@@ -7,13 +8,13 @@ use crate::structs::messages::{AddPoints, BlockPoints, SubtractPoints};
 
 #[allow(dead_code)]
 pub struct LocalServer{
-    accounts: Vec<Account>,
+    accounts: HashMap<u32, Account>,
 }
 
 impl LocalServer {
     pub fn new() -> Result<LocalServer, String> {
         Ok( Self {
-            accounts: vec![],
+            accounts: HashMap::new(),
         })
     }
 }
