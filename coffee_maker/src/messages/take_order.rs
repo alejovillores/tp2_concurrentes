@@ -1,6 +1,6 @@
-use ::actix::Message;
 use crate::order::Order;
+use ::actix::Message;
 
 #[derive(Message)]
-#[rtype(result = "Result<Order, std::io::Error>")]
+#[rtype(result = "Option<Order>")]
 pub struct TakeOrder {}
