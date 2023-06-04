@@ -35,7 +35,7 @@ mod file_reader_test {
 
     #[test]
     fn test02_when_opening_a_non_existing_file_should_return_only_error() {
-        let file_name = String::from( "files/test_order_files/non_existing_file.json");
+        let file_name = String::from("files/test_order_files/non_existing_file.json");
         let result = FileReader::read(&file_name);
 
         assert!(result.is_err());
