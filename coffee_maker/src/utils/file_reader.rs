@@ -21,3 +21,23 @@ impl FileReader {
         }
     }
 }
+
+#[cfg(test)]
+mod file_reader_test {
+    use super::FileReader;
+
+    #[test]
+    fn test01_when_opening_a_file_with_one_order_should_return_ok() {
+        let file_name = String::from("files/test_files/one_order.json");
+        let result = FileReader::read(&file_name);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test02_when_opening_a_non_existing_file_should_return_only_error() {
+        let file_name = String::from( "files/test_order_files/non_existing_file.json");
+        let result = FileReader::read(&file_name);
+
+        assert!(result.is_err());
+    }
+}
