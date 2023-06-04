@@ -3,7 +3,7 @@ extern crate actix;
 use std::io::{BufRead, BufReader, Write};
 use std::net::{TcpListener, TcpStream};
 // use std::thread;
-use actix::{Addr, System, Actor};
+use actix::{Addr, System, Actor, MailboxError};
 
 use local_server::{
     local_server::LocalServer, structs::messages::{AddPoints, BlockPoints, SubtractPoints},
@@ -58,14 +58,7 @@ async fn handle_client(mut stream: TcpStream, server_address: Addr<LocalServer>)
                             Err(actix::MailboxError::Closed)
                         }
                     };
-                    match result {
-                        Ok(res) => {
-                            stream.write_all(format!("{}\n", res).as_bytes()).unwrap();
-                        }
-                        Err(_) => {
-                            stream.write_all(b"ERR: Internal server error\n").unwrap();
-                        }
-                    }
+                    handle_result(&mut stream, result);
                 }
                 else if parts.len() == 4{
                     let method = parts[0];
@@ -101,14 +94,7 @@ async fn handle_client(mut stream: TcpStream, server_address: Addr<LocalServer>)
                             Err(actix::MailboxError::Closed)
                         }
                     };
-                    match result {
-                        Ok(res) => {
-                            stream.write_all(format!("{}\n", res).as_bytes()).unwrap();
-                        }
-                        Err(_) => {
-                            stream.write_all(b"ERR: Internal server error\n").unwrap();
-                        }
-                    }
+                    handle_result(&mut stream, result);
                 }
                 else {
                     stream.write_all(b"ERR: Invalid format\n").unwrap();
@@ -118,6 +104,17 @@ async fn handle_client(mut stream: TcpStream, server_address: Addr<LocalServer>)
                 eprintln!("Error reading from client: {}", e);
                 break;
             }
+        }
+    }
+}
+
+fn handle_result(stream: &mut TcpStream, result: Result<String, MailboxError>) {
+    match result {
+        Ok(res) => {
+            stream.write_all(format!("{}\n", res).as_bytes()).unwrap();
+        }
+        Err(_) => {
+            stream.write_all(b"ERR: Internal server error\n").unwrap();
         }
     }
 }
