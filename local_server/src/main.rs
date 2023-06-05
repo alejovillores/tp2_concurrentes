@@ -2,7 +2,6 @@ extern crate actix;
 
 use std::io::{BufRead, BufReader, Write};
 use std::net::{TcpListener, TcpStream};
-// use std::thread;
 use actix::{Addr, System, Actor, MailboxError};
 
 use local_server::{
