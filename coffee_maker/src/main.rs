@@ -1,6 +1,6 @@
-use log::{error, info};
+use log::{error, info, warn};
 use std::{
-    io::{Read, Write},
+    io::{Read, Write, BufReader, BufRead},
     net::TcpStream,
 };
 
@@ -14,6 +14,7 @@ use coffee_maker::{
     utils::{order_parser::OrderParser, probablity_calculator::ProbabilityCalculator},
 };
 
+// From console next
 const PROBABLITY: f64 = 0.8;
 #[actix_rt::main]
 async fn main() {
@@ -23,50 +24,64 @@ async fn main() {
 
     // Instanciates new calculator
     let probablity_calculator = ProbabilityCalculator::new();
+    let order_parser = OrderParser::new(String::from("coffee_maker/resources/test/one_order.json"));
+    
     //FIXME: Correct unwrap
-    let order_parser =
-        OrderParser::new(String::from("coffee_maker/files/test_files/one_order.json"));
-    let coffee_maker_actor =
-        CoffeeMaker::new(PROBABLITY, probablity_calculator, order_parser).unwrap();
+    let coffee_maker_actor = CoffeeMaker::new(PROBABLITY, probablity_calculator, order_parser).unwrap();
     let addr = coffee_maker_actor.start();
     info!("CoffeeMaker actor is active");
 
-    if let Ok(mut stream) = TcpStream::connect("127.0.0.1:8080") {
+    if let Ok(mut stream) = TcpStream::connect("127.0.0.1:8888") {
         info!("Connected to the server!");
         loop {
             let next_order;
             let take_order_result = addr.send(TakeOrder {}).await;
             match take_order_result {
                 Ok(_next_order) => match _next_order {
-                    Some(order) => next_order = order,
+                    Some(order) => {
+                        info!("New order");
+                        next_order = order},
                     None => {
-                        println!("There are no more orders left to prepare");
+                        info!("There are no more orders left to prepare");
                         break;
                     }
                 },
-
-                Err(msg) => {
-                    println!("There are no more orders left to prepare");
+                Err(_) => {
+                    warn!("There are no more orders left to prepare");
+                    let end_message = format!("REQ \n",);
+                    if let Ok(_) = stream.write(end_message.as_bytes()) {
+                        if let Ok(_) = stream.flush(){
+                            info!("Send to server end message");
+                        }
+                    }
+                    else {
+                        error!("Could not send end message");
+                    }
                     break;
                 }
             }
 
             // 1. Ask for points
-            let req_points = format!(
+            let request_points = format!(
                 "REQ, account_id: {}, coffee_points: {} \n",
                 next_order.account_id, next_order.coffee_points
             );
-            if let Ok(bytes_written) = stream.write(&req_points.as_bytes()) {
-                info!("Requested Server bytes: {}", bytes_written);
+            if let Ok(_) = stream.write(request_points.as_bytes()) {
+                if let Ok(_) = stream.flush(){
+                    info!("Send to server request: {:?}", request_points);
+                }
             }
 
             // 2. Wait for OK response
-            let mut res: u32;
-            let mut package = String::new();
-            match stream.read_to_string(&mut package) {
-                Ok(e) => {
-                    info!("Read response from server");
-                    if package == "OK" {
+            info!("Wait for OK response from server");
+            let res: u32;
+            let mut buff = BufReader::new(stream.try_clone().unwrap());
+            let mut server_response = String::new();
+            match buff.read_line(&mut server_response) {
+                Ok(_) => {
+                    info!("Read response from server: {:?}", server_response);
+    
+                    if server_response.trim() == "OK" {
                         info!("OK from server");
                         res = addr
                             .send(PointsConsumingOrder {
@@ -74,7 +89,7 @@ async fn main() {
                             })
                             .await
                             .unwrap();
-                        info!("Result from Coffee Maker: {}", res);
+                        info!("Result from Coffee Maker: {} coffe points", res);
                     } else {
                         //FIXME -
                         res = 0;
@@ -90,16 +105,17 @@ async fn main() {
 
             // 3. Send results
             let response = format!("RES, account_id: {}, coffee_points: {} \n", 1, res);
-            if let Ok(bytes_written) = stream.write(&response.as_bytes()) {
+            if let Ok(bytes_written) = stream.write(response.as_bytes()) {
                 info!("Write results to Server bytes: {}", bytes_written);
             }
 
             // 4.  Waits for ACK
-            let mut ack = String::new();
-            match stream.read_to_string(&mut ack) {
+            info!("Wait for ACK response from server");
+            let mut server_response = String::new();
+            match buff.read_line(&mut server_response){
                 Ok(_) => {
                     info!("Read response from server after writing");
-                    if ack == "ACK" {
+                    if server_response.trim() == "ACK" {
                         info!("ACK from server");
                     } else {
                         error!("Not ACK from server")
