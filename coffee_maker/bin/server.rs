@@ -27,7 +27,7 @@ fn handle_client(mut stream: TcpStream) {
             }
             "RES" => {
                 println!("is RES request");
-                println!("Receive {:?} coffe points", &parts[2]);
+                println!("Receive {:?} coffe points", &parts[1]);
                 let response = String::from("ACK \n");
                 thread::sleep(Duration::from_secs(2));
                 stream

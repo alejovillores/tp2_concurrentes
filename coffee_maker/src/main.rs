@@ -7,7 +7,10 @@ use std::{
 use actix::Actor;
 use coffee_maker::{
     coffee_maker::CoffeeMaker,
-    messages::{points_consuming_order::PointsConsumingOrder, take_order::TakeOrder},
+    messages::{
+        points_consuming_order::PointsConsumingOrder, points_earning_order::PointEarningOrder,
+        take_order::TakeOrder,
+    },
     utils::{order_parser::OrderParser, probablity_calculator::ProbabilityCalculator},
 };
 
@@ -101,12 +104,28 @@ async fn main() {
                     info!("Read response from server: {:?}", response);
                     if response == "OK" {
                         info!("OK from server");
-                        res = addr
-                            .send(PointsConsumingOrder {
-                                coffe_points: next_order.coffee_points,
-                            })
-                            .await
-                            .unwrap();
+                        match next_order.operation.as_str() {
+                            "SUBS" => {
+                                res = addr
+                                    .send(PointsConsumingOrder {
+                                        coffe_points: next_order.coffee_points,
+                                    })
+                                    .await
+                                    .unwrap();
+                            }
+                            "ADD" => {
+                                res = addr
+                                    .send(PointEarningOrder {
+                                        coffe_points: next_order.coffee_points,
+                                    })
+                                    .await
+                                    .unwrap();
+                            }
+                            _ => {
+                                res = 0;
+                                error!("Invalid Order operation")
+                            }
+                        }
                         info!("Result from Coffee Maker: {} coffe points", res);
                     } else {
                         //FIXME -
@@ -122,8 +141,10 @@ async fn main() {
             }
 
             // 3. Send results
-            let response_message =
-                format!("RES, ADD, account_id: {}, coffee_points: {} \n", 1, res);
+            let response_message = format!(
+                "RES, {}, account_id: {}, coffee_points: {} \n",
+                next_order.operation, 1, res
+            );
             match send(&mut stream, response_message) {
                 Ok(_) => info!("Send RES message to Server"),
                 Err(e) => error!("{}", e),
