@@ -1,5 +1,6 @@
 extern crate actix;
 
+use log::{error, info};
 use std::io::{BufRead, BufReader, Write};
 use std::net::{TcpListener, TcpStream};
 use actix::{Addr, System, Actor, MailboxError};
@@ -14,7 +15,7 @@ async fn main() {
     let server_address = LocalServer::new().unwrap().start();
     let listener = TcpListener::bind("127.0.0.1:8081").expect("Failed to bind address");
 
-    println!("Esperando conexiones!");
+    info!("Esperando conexiones!");
 
     for stream in listener.incoming() {
         match stream {
@@ -25,7 +26,7 @@ async fn main() {
                 });
             }
             Err(e) => {
-                eprintln!("Error accepting connection: {}", e);
+                error!("Error accepting connection: {}", e);
             }
         }
     }
@@ -100,7 +101,7 @@ async fn handle_client(mut stream: TcpStream, server_address: Addr<LocalServer>)
                 }
             }
             Err(e) => {
-                eprintln!("Error reading from client: {}", e);
+                error!("Error reading from client: {}", e);
                 break;
             }
         }

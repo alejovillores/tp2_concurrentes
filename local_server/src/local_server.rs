@@ -1,5 +1,6 @@
 extern crate actix;
 
+use log::{error, info};
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -39,7 +40,7 @@ impl Handler<AddPoints> for LocalServer {
                 match Account::new(id_clone) {
                     Ok(new_account) => v.insert(Arc::new(Mutex::new(new_account))),
                     Err(err) => {
-                        println!("Error al crear la cuenta: {}", err);
+                        error!("Error creating account with id {}: {}", id_clone, err);
                         return "ERROR".to_string()
                     }
                 }
@@ -48,11 +49,11 @@ impl Handler<AddPoints> for LocalServer {
         match account.lock() {
             Ok(mut account_lock) => {
                 account_lock.add_points(points);
-                println!("[LOCAL_SERVER] La cuenta {} suma {} puntos", customer_id, points);
+                info!("{} points added to account {}", points, customer_id);
                 "OK".to_string()
             }
             Err(_) => {
-                println!("[ERROR] [LOCAL_SERVER] No se pudo obtener el lock de la cuenta {} para sumar {} puntos", customer_id, points);
+                error!("Can't get lock from account {} to add {} points", customer_id, points);
                 "ERROR".to_string()
             }
         }
@@ -70,11 +71,11 @@ impl Handler<BlockPoints> for LocalServer {
             match account.lock() {
                 Ok(mut account_lock) => {
                     let _ = account_lock.block_points(points);
-                    println!("[LOCAL_SERVER] La cuenta {} bloquea {} puntos", customer_id, points);
+                    info!("{} points blocked from account {}", points, customer_id);
                     "OK".to_string()
                 }
                 Err(_) => {
-                    println!("[ERROR] [LOCAL_SERVER] No se pudo obtener el lock de la cuenta {} para bloquear {} puntos", customer_id, points);
+                    error!("Can't get lock from account {} to block {} points", customer_id, points);
                     "ERROR".to_string()
                 }
             }
@@ -95,11 +96,11 @@ impl Handler<SubtractPoints> for LocalServer {
             match account.lock() {
                 Ok(mut account_lock) => {
                     let _ = account_lock.subtract_points(points);
-                    println!("[LOCAL_SERVER] La cuenta {} resta {} puntos", customer_id, points);
+                    info!("{} points consumed from account {}", points, customer_id);
                     "OK".to_string()
                 }
                 Err(_) => {
-                    println!("[ERROR] [LOCAL_SERVER] No se pudo obtener el lock de la cuenta {} para restar {} puntos", customer_id, points);
+                    error!("Can't get lock from account {} to consume {} points", customer_id, points);
                     "ERROR".to_string()
                 }
             }
