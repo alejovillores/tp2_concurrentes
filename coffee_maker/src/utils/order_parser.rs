@@ -68,8 +68,7 @@ mod order_parser_test {
 
     #[test]
     fn test04_when_parsing_a_file_that_does_not_exist_should_return_error() {
-        let order_parser =
-            OrderParser::new(String::from("resources/test/non_existing_file.json"));
+        let order_parser = OrderParser::new(String::from("resources/test/non_existing_file.json"));
         let result = order_parser.read_orders();
         assert!(result.is_err());
     }

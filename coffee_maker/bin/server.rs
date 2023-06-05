@@ -1,4 +1,4 @@
-use std::io::{Read, Write, BufReader, BufRead};
+use std::io::{BufRead, BufReader,Write};
 use std::net::{TcpListener, TcpStream};
 use std::thread;
 use std::time::Duration;
@@ -8,18 +8,21 @@ fn handle_client(mut stream: TcpStream) {
     let mut buff = BufReader::new(stream.try_clone().unwrap());
     loop {
         let mut request = String::new();
-        buff.read_line(&mut request).expect("Fail to read from stream");
-        
+        buff.read_line(&mut request)
+            .expect("Fail to read from stream");
+
         println!("Received request: {}", request);
-        
+
         let parts: Vec<&str> = request.trim().split(',').collect();
         match parts[0] {
-            "REQ"  => {
+            "REQ" => {
                 println!("is REQ request");
                 println!("Receive request for {:?} coffe points", &parts[2]);
                 let response = String::from("OK\n");
                 thread::sleep(Duration::from_secs(2));
-                stream.write_all(response.as_bytes()).expect("Failed to write to stream");
+                stream
+                    .write_all(response.as_bytes())
+                    .expect("Failed to write to stream");
                 stream.flush().expect("Failed to flush stream");
             }
             "RES" => {
@@ -27,7 +30,9 @@ fn handle_client(mut stream: TcpStream) {
                 println!("Receive {:?} coffe points", &parts[2]);
                 let response = String::from("ACK \n");
                 thread::sleep(Duration::from_secs(2));
-                stream.write_all(response.as_bytes()).expect("Failed to write to stream");
+                stream
+                    .write_all(response.as_bytes())
+                    .expect("Failed to write to stream");
                 stream.flush().expect("Failed to flush stream");
             }
             _ => {

@@ -1,33 +1,58 @@
 use log::{error, info, warn};
 use std::{
-    io::{Read, Write, BufReader, BufRead},
+    io::{BufRead, BufReader, Write},
     net::TcpStream,
 };
 
 use actix::Actor;
 use coffee_maker::{
     coffee_maker::CoffeeMaker,
-    messages::{
-        points_consuming_order::PointsConsumingOrder,
-        take_order::{self, TakeOrder},
-    },
+    messages::{points_consuming_order::PointsConsumingOrder, take_order::TakeOrder},
     utils::{order_parser::OrderParser, probablity_calculator::ProbabilityCalculator},
 };
 
 // From console next
 const PROBABLITY: f64 = 0.8;
+
+fn send(stream: &mut TcpStream, message: String) -> Result<(), String> {
+    match stream.write(message.as_bytes()) {
+        Ok(_) => match stream.flush() {
+            Ok(_) => {
+                info!("Flushed message to TCP Stream");
+                return Ok(());
+            }
+            Err(_) => error!("Error attempting to flush message to TCP Stream"),
+        },
+        Err(_) => error!("Error attempting to write message"),
+    }
+    Err(String::from("Error writting expected message"))
+}
+
+fn read(stream: &mut TcpStream) -> Result<String, String> {
+    let mut buff = BufReader::new(stream.try_clone().unwrap());
+    let mut response = String::new();
+    match buff.read_line(&mut response) {
+        Ok(_) => {
+            info!("Read from TCP Stream success");
+            Ok(String::from(response.trim()))
+        }
+        Err(_) => {
+            error!("Error reading from TCP Stream");
+            Err(String::from("Error reading from Server"))
+        }
+    }
+}
+
 #[actix_rt::main]
 async fn main() {
     env_logger::init();
 
-    //let coffee_maker_arbitrer = SyncArbiter::start(2, || CoffeeMaker {});
-
-    // Instanciates new calculator
     let probablity_calculator = ProbabilityCalculator::new();
     let order_parser = OrderParser::new(String::from("coffee_maker/resources/test/one_order.json"));
-    
+
     //FIXME: Correct unwrap
-    let coffee_maker_actor = CoffeeMaker::new(PROBABLITY, probablity_calculator, order_parser).unwrap();
+    let coffee_maker_actor =
+        CoffeeMaker::new(PROBABLITY, probablity_calculator, order_parser).unwrap();
     let addr = coffee_maker_actor.start();
     info!("CoffeeMaker actor is active");
 
@@ -40,7 +65,8 @@ async fn main() {
                 Ok(_next_order) => match _next_order {
                     Some(order) => {
                         info!("New order");
-                        next_order = order},
+                        next_order = order
+                    }
                     None => {
                         info!("There are no more orders left to prepare");
                         break;
@@ -49,39 +75,31 @@ async fn main() {
                 Err(_) => {
                     warn!("There are no more orders left to prepare");
                     let end_message = format!("REQ \n",);
-                    if let Ok(_) = stream.write(end_message.as_bytes()) {
-                        if let Ok(_) = stream.flush(){
-                            info!("Send to server end message");
-                        }
-                    }
-                    else {
-                        error!("Could not send end message");
+                    match send(&mut stream, end_message) {
+                        Ok(_) => {}
+                        Err(e) => error!("{}", e),
                     }
                     break;
                 }
             }
 
             // 1. Ask for points
-            let request_points = format!(
+            let request_message = format!(
                 "REQ, account_id: {}, coffee_points: {} \n",
                 next_order.account_id, next_order.coffee_points
             );
-            if let Ok(_) = stream.write(request_points.as_bytes()) {
-                if let Ok(_) = stream.flush(){
-                    info!("Send to server request: {:?}", request_points);
-                }
+            match send(&mut stream, request_message) {
+                Ok(_) => info!("Send REQ message to Server"),
+                Err(e) => error!("{}", e),
             }
 
             // 2. Wait for OK response
             info!("Wait for OK response from server");
             let res: u32;
-            let mut buff = BufReader::new(stream.try_clone().unwrap());
-            let mut server_response = String::new();
-            match buff.read_line(&mut server_response) {
-                Ok(_) => {
-                    info!("Read response from server: {:?}", server_response);
-    
-                    if server_response.trim() == "OK" {
+            match read(&mut stream) {
+                Ok(response) => {
+                    info!("Read response from server: {:?}", response);
+                    if response == "OK" {
                         info!("OK from server");
                         res = addr
                             .send(PointsConsumingOrder {
@@ -96,32 +114,32 @@ async fn main() {
                         error!("Not OK from server")
                     }
                 }
-                Err(_) => {
+                Err(e) => {
                     //FIXME
                     res = 0;
-                    error!("Error reading from TCP connection")
+                    error!("{}", e)
                 }
             }
 
             // 3. Send results
-            let response = format!("RES, account_id: {}, coffee_points: {} \n", 1, res);
-            if let Ok(bytes_written) = stream.write(response.as_bytes()) {
-                info!("Write results to Server bytes: {}", bytes_written);
+            let response_message = format!("RES, account_id: {}, coffee_points: {} \n", 1, res);
+            match send(&mut stream, response_message) {
+                Ok(_) => info!("Send RES message to Server"),
+                Err(e) => error!("{}", e),
             }
 
             // 4.  Waits for ACK
             info!("Wait for ACK response from server");
-            let mut server_response = String::new();
-            match buff.read_line(&mut server_response){
-                Ok(_) => {
+            match read(&mut stream) {
+                Ok(response) => {
                     info!("Read response from server after writing");
-                    if server_response.trim() == "ACK" {
+                    if response == "ACK" {
                         info!("ACK from server");
                     } else {
                         error!("Not ACK from server")
                     }
                 }
-                Err(_) => error!("Error reading from TCP connection"),
+                Err(e) => error!("{}", e),
             }
         }
     } else {
