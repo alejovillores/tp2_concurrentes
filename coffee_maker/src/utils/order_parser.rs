@@ -46,6 +46,7 @@ mod order_parser_test {
         assert_eq!(orders.len(), 1);
         assert_eq!(orders[0].coffee_points, 11);
         assert_eq!(orders[0].account_id, 1);
+        assert_eq!(orders[0].operation, "ADD");
     }
 
     #[test]

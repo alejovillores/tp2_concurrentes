@@ -192,6 +192,7 @@ mod coffee_maker_test {
             Ok(vec![Order {
                 coffee_points: 11,
                 account_id: 1,
+                operation: "ADD".to_string(),
             }])
         });
 
@@ -220,10 +221,12 @@ mod coffee_maker_test {
                 Order {
                     coffee_points: 11,
                     account_id: 1,
+                    operation: "ADD".to_string(),
                 },
                 Order {
                     coffee_points: 4,
                     account_id: 2,
+                    operation: "SUBS".to_string(),
                 },
             ])
         });
@@ -253,6 +256,7 @@ mod coffee_maker_test {
             Ok(vec![Order {
                 coffee_points: 11,
                 account_id: 1,
+                operation: "ADD".to_string(),
             }])
         });
 

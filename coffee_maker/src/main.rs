@@ -122,7 +122,8 @@ async fn main() {
             }
 
             // 3. Send results
-            let response_message = format!("RES, account_id: {}, coffee_points: {} \n", 1, res);
+            let response_message =
+                format!("RES, ADD, account_id: {}, coffee_points: {} \n", 1, res);
             match send(&mut stream, response_message) {
                 Ok(_) => info!("Send RES message to Server"),
                 Err(e) => error!("{}", e),
