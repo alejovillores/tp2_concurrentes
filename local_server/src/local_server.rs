@@ -11,7 +11,7 @@ use crate::structs::messages::{AddPoints, BlockPoints, SubtractPoints};
 
 #[allow(dead_code)]
 pub struct LocalServer {
-    accounts: HashMap<u32, Arc<Mutex<Account>>>,
+    pub accounts: HashMap<u32, Arc<Mutex<Account>>>,
 }
 
 impl LocalServer {
@@ -73,9 +73,17 @@ impl Handler<BlockPoints> for LocalServer {
         if let Some(account) = self.accounts.get_mut(&customer_id) {
             match account.lock() {
                 Ok(mut account_lock) => {
-                    let _ = account_lock.block_points(points);
-                    info!("{} points blocked from account {}", points, customer_id);
-                    "OK".to_string()
+                    let result = account_lock.block_points(points);
+                    if result.is_ok() {
+                        info!("{} points blocked from account {}", points, customer_id);
+                        "OK".to_string()
+                    } else {
+                        error!(
+                            "Couldn't block {} points from account {}",
+                            points, customer_id
+                        );
+                        "ERROR".to_string()
+                    }
                 }
                 Err(_) => {
                     error!(
@@ -101,9 +109,17 @@ impl Handler<SubtractPoints> for LocalServer {
         if let Some(account) = self.accounts.get_mut(&customer_id) {
             match account.lock() {
                 Ok(mut account_lock) => {
-                    let _ = account_lock.subtract_points(points);
-                    info!("{} points consumed from account {}", points, customer_id);
-                    "OK".to_string()
+                    let result = account_lock.subtract_points(points);
+                    if result.is_ok() {
+                        info!("{} points consumed from account {}", points, customer_id);
+                        "OK".to_string()
+                    } else {
+                        error!(
+                            "Couldn't consume {} points from account {}",
+                            points, customer_id
+                        );
+                        "ERROR".to_string()
+                    }
                 }
                 Err(_) => {
                     error!(
@@ -206,5 +222,56 @@ mod local_server_test {
         let result = server_addr.send(sub_msg).await.unwrap();
 
         assert_eq!(result, "ERROR".to_string());
+    }
+
+    #[actix_rt::test]
+    async fn test_concurrent_account_points_changing() {
+        let server = LocalServer::new().unwrap();
+        let server_addr = server.start();
+        let add_msg = AddPoints {
+            customer_id: 123,
+            points: 10,
+        };
+        let block_msg = BlockPoints {
+            customer_id: 123,
+            points: 10,
+        };
+        let block_msg_2 = BlockPoints {
+            customer_id: 123,
+            points: 10,
+        };
+        let sub_msg = SubtractPoints {
+            customer_id: 123,
+            points: 10,
+        };
+
+        let server_addr_clone_1 = server_addr.clone();
+        let server_addr_clone_2 = server_addr.clone();
+        let server_addr_clone_3 = server_addr.clone();
+
+        let handle_1 = actix::spawn(async move {
+            let result = server_addr.send(add_msg).await.unwrap();
+            assert_eq!(result, "OK".to_string());
+        });
+
+        let handle_2 = actix::spawn(async move {
+            let result = server_addr_clone_1.send(block_msg).await.unwrap();
+            assert_eq!(result, "OK".to_string());
+        });
+
+        let handle_3 = actix::spawn(async move {
+            let result = server_addr_clone_2.send(block_msg_2).await.unwrap();
+            assert_eq!(result, "ERROR".to_string());
+        });
+
+        let handle_4 = actix::spawn(async move {
+            let result = server_addr_clone_3.send(sub_msg).await.unwrap();
+            assert_eq!(result, "OK".to_string());
+        });
+
+        handle_1.await.unwrap();
+        handle_2.await.unwrap();
+        handle_3.await.unwrap();
+        handle_4.await.unwrap();
     }
 }

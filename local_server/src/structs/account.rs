@@ -29,7 +29,7 @@ impl Account {
     }
 
     pub fn block_points(&mut self, points: u32) -> Result<(), String> {
-        if self.points >= points {
+        if self.points - self.blocked_points >= points {
             self.blocked_points += points;
             Ok(())
         } else {
@@ -90,6 +90,17 @@ mod account_test {
         assert_eq!(account.points, 15);
         assert_eq!(account.blocked_points, 10);
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_block_points_with_enough_left_points_fails() {
+        let mut account = Account::new(123).unwrap();
+        account.points = 15;
+        let _ = account.block_points(10);
+        let result = account.block_points(10);
+        assert_eq!(account.points, 15);
+        assert_eq!(account.blocked_points, 10);
+        assert!(result.is_err());
     }
 
     #[test]
