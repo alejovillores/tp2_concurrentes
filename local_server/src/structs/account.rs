@@ -1,13 +1,13 @@
 #[allow(dead_code)]
 pub struct Account {
-    customer_id: u32,
-    points: u32,
-    blocked_points: u32,
+    pub customer_id: u32,
+    pub points: u32,
+    pub blocked_points: u32,
 }
 
 impl Account {
-    pub fn new(customer_id: u32) -> Result<Account, String>{
-        Ok(Self{
+    pub fn new(customer_id: u32) -> Result<Account, String> {
+        Ok(Self {
             customer_id,
             points: 0,
             blocked_points: 0,
@@ -24,7 +24,7 @@ impl Account {
             self.points -= points;
             Ok(())
         } else {
-            Err("No se han bloqueado los puntos con anterioridad". to_string())
+            Err("No se han bloqueado los puntos con anterioridad".to_string())
         }
     }
 
@@ -48,7 +48,7 @@ impl Account {
 }
 
 #[cfg(test)]
-mod account_test{
+mod account_test {
     use super::*;
 
     #[test]
@@ -72,7 +72,7 @@ mod account_test{
     }
 
     #[test]
-    fn test_subtract_points_with_not_enough_blocked_points_fails(){
+    fn test_subtract_points_with_not_enough_blocked_points_fails() {
         let mut account = Account::new(123).unwrap();
         account.points = 30;
         account.blocked_points = 5;

@@ -1,12 +1,13 @@
 extern crate actix;
 
+use actix::{Actor, Addr, MailboxError, System};
 use log::{error, info};
 use std::io::{BufRead, BufReader, Write};
 use std::net::{TcpListener, TcpStream};
-use actix::{Addr, System, Actor, MailboxError};
 
 use local_server::{
-    local_server::LocalServer, structs::messages::{AddPoints, BlockPoints, SubtractPoints},
+    local_server::LocalServer,
+    structs::messages::{AddPoints, BlockPoints, SubtractPoints},
 };
 
 #[actix_rt::main]
@@ -22,7 +23,7 @@ async fn main() {
             Ok(stream) => {
                 let server_addr_clone = server_address.clone();
                 actix_rt::spawn(async move {
-                   handle_client(stream, server_addr_clone).await;
+                    handle_client(stream, server_addr_clone).await;
                 });
             }
             Err(e) => {
@@ -34,7 +35,7 @@ async fn main() {
     system.run().unwrap();
 }
 
-async fn handle_client(mut stream: TcpStream, server_address: Addr<LocalServer>){
+async fn handle_client(mut stream: TcpStream, server_address: Addr<LocalServer>) {
     let reader = BufReader::new(stream.try_clone().expect(""));
     for line in reader.lines() {
         match line {
@@ -59,44 +60,40 @@ async fn handle_client(mut stream: TcpStream, server_address: Addr<LocalServer>)
                         }
                     };
                     handle_result(&mut stream, result);
-                }
-                else if parts.len() == 4{
+                } else if parts.len() == 4 {
                     let method = parts[0];
                     let operation = parts[1];
                     let customer_id: u32 = parts[2].parse().unwrap();
                     let points: u32 = parts[3].parse().unwrap();
 
                     let result = match method {
-                        "RES" => {
-                            match operation{
-                                "ADD" => {
-                                    let msg = AddPoints {
-                                        customer_id,
-                                        points,
-                                    };
-                                    server_address.send(msg).await
-                                }
-                                "SUBS" => {
-                                    let msg = SubtractPoints {
-                                        customer_id,
-                                        points,
-                                    };
-                                    server_address.send(msg).await
-                                }
-                                _ => {
-                                    stream.write_all(b"ERR: Invalid operation\n").unwrap();
-                                    Err(actix::MailboxError::Closed)
-                                }
+                        "RES" => match operation {
+                            "ADD" => {
+                                let msg = AddPoints {
+                                    customer_id,
+                                    points,
+                                };
+                                server_address.send(msg).await
                             }
-                        }
+                            "SUBS" => {
+                                let msg = SubtractPoints {
+                                    customer_id,
+                                    points,
+                                };
+                                server_address.send(msg).await
+                            }
+                            _ => {
+                                stream.write_all(b"ERR: Invalid operation\n").unwrap();
+                                Err(actix::MailboxError::Closed)
+                            }
+                        },
                         _ => {
                             stream.write_all(b"ERR: Invalid method\n").unwrap();
                             Err(actix::MailboxError::Closed)
                         }
                     };
                     handle_result(&mut stream, result);
-                }
-                else {
+                } else {
                     stream.write_all(b"ERR: Invalid format\n").unwrap();
                 }
             }
