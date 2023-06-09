@@ -39,18 +39,19 @@ mod order_parser_test {
 
     #[test]
     fn test01_when_parsing_a_file_with_one_order_should_return_one_order() {
-        let order_parser = OrderParser::new(String::from("files/test_files/one_order.json"));
+        let order_parser = OrderParser::new(String::from("resources/test/one_order.json"));
         let result = order_parser.read_orders();
         assert!(result.is_ok());
         let orders = result.unwrap();
         assert_eq!(orders.len(), 1);
         assert_eq!(orders[0].coffee_points, 11);
         assert_eq!(orders[0].account_id, 1);
+        assert_eq!(orders[0].operation, "ADD");
     }
 
     #[test]
     fn test02_when_parsing_a_file_with_no_orders_should_return_empty_vector() {
-        let order_parser = OrderParser::new(String::from("files/test_files/no_orders.json"));
+        let order_parser = OrderParser::new(String::from("resources/test/no_orders.json"));
         let result = order_parser.read_orders();
         assert!(result.is_ok());
         let orders = result.unwrap();
@@ -59,7 +60,7 @@ mod order_parser_test {
 
     #[test]
     fn test03_when_parsing_a_file_with_two_orders_should_return_correct_two_orders() {
-        let order_parser = OrderParser::new(String::from("files/test_files/two_orders.json"));
+        let order_parser = OrderParser::new(String::from("resources/test/two_orders.json"));
         let result = order_parser.read_orders();
         assert!(result.is_ok());
         let orders = result.unwrap();
@@ -68,8 +69,7 @@ mod order_parser_test {
 
     #[test]
     fn test04_when_parsing_a_file_that_does_not_exist_should_return_error() {
-        let order_parser =
-            OrderParser::new(String::from("files/test_files/non_existing_file.json"));
+        let order_parser = OrderParser::new(String::from("resources/test/non_existing_file.json"));
         let result = order_parser.read_orders();
         assert!(result.is_err());
     }

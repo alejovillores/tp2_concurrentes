@@ -3,6 +3,10 @@ name = "coffee_maker"
 version = "0.1.0"
 edition = "2021"
 
+[[bin]]
+name = "test_coffee_machine_server"
+path = "bin/server.rs"
+
 [dependencies]
 actix = "0.13.0"
 actix-rt = "2.8.0"

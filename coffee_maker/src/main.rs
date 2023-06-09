@@ -1,6 +1,6 @@
-use log::{error, info};
+use log::{error, info, warn};
 use std::{
-    io::{Read, Write},
+    io::{BufRead, BufReader, Write},
     net::TcpStream,
 };
 
@@ -8,104 +8,160 @@ use actix::Actor;
 use coffee_maker::{
     coffee_maker::CoffeeMaker,
     messages::{
-        points_consuming_order::PointsConsumingOrder,
-        take_order::{self, TakeOrder},
+        points_consuming_order::PointsConsumingOrder, points_earning_order::PointEarningOrder,
+        take_order::TakeOrder,
     },
     utils::{order_parser::OrderParser, probablity_calculator::ProbabilityCalculator},
 };
 
+// From console next
 const PROBABLITY: f64 = 0.8;
+
+fn send(stream: &mut TcpStream, message: String) -> Result<(), String> {
+    match stream.write(message.as_bytes()) {
+        Ok(_) => match stream.flush() {
+            Ok(_) => {
+                info!("Flushed message to TCP Stream");
+                return Ok(());
+            }
+            Err(_) => error!("Error attempting to flush message to TCP Stream"),
+        },
+        Err(_) => error!("Error attempting to write message"),
+    }
+    Err(String::from("Error writting expected message"))
+}
+
+fn read(stream: &mut TcpStream) -> Result<String, String> {
+    let mut buff = BufReader::new(stream.try_clone().unwrap());
+    let mut response = String::new();
+    match buff.read_line(&mut response) {
+        Ok(_) => {
+            info!("Read from TCP Stream success");
+            Ok(String::from(response.trim()))
+        }
+        Err(_) => {
+            error!("Error reading from TCP Stream");
+            Err(String::from("Error reading from Server"))
+        }
+    }
+}
+
 #[actix_rt::main]
 async fn main() {
     env_logger::init();
 
-    //let coffee_maker_arbitrer = SyncArbiter::start(2, || CoffeeMaker {});
-
-    // Instanciates new calculator
     let probablity_calculator = ProbabilityCalculator::new();
+    let order_parser = OrderParser::new(String::from("coffee_maker/resources/test/one_order.json"));
+
     //FIXME: Correct unwrap
-    let order_parser =
-        OrderParser::new(String::from("coffee_maker/files/test_files/one_order.json"));
     let coffee_maker_actor =
         CoffeeMaker::new(PROBABLITY, probablity_calculator, order_parser).unwrap();
     let addr = coffee_maker_actor.start();
     info!("CoffeeMaker actor is active");
 
-    if let Ok(mut stream) = TcpStream::connect("127.0.0.1:8080") {
+    if let Ok(mut stream) = TcpStream::connect("127.0.0.1:8888") {
         info!("Connected to the server!");
         loop {
             let next_order;
             let take_order_result = addr.send(TakeOrder {}).await;
             match take_order_result {
                 Ok(_next_order) => match _next_order {
-                    Some(order) => next_order = order,
+                    Some(order) => {
+                        info!("New order");
+                        next_order = order
+                    }
                     None => {
-                        println!("There are no more orders left to prepare");
+                        info!("There are no more orders left to prepare");
                         break;
                     }
                 },
-
-                Err(msg) => {
-                    println!("There are no more orders left to prepare");
+                Err(_) => {
+                    warn!("There are no more orders left to prepare");
+                    let end_message = format!("REQ \n",);
+                    match send(&mut stream, end_message) {
+                        Ok(_) => {}
+                        Err(e) => error!("{}", e),
+                    }
                     break;
                 }
             }
 
             // 1. Ask for points
-            let req_points = format!(
+            let request_message = format!(
                 "REQ, account_id: {}, coffee_points: {} \n",
                 next_order.account_id, next_order.coffee_points
             );
-            if let Ok(bytes_written) = stream.write(&req_points.as_bytes()) {
-                info!("Requested Server bytes: {}", bytes_written);
+            match send(&mut stream, request_message) {
+                Ok(_) => info!("Send REQ message to Server"),
+                Err(e) => error!("{}", e),
             }
 
             // 2. Wait for OK response
-            let mut res: u32;
-            let mut package = String::new();
-            match stream.read_to_string(&mut package) {
-                Ok(e) => {
-                    info!("Read response from server");
-                    if package == "OK" {
+            info!("Wait for OK response from server");
+            let res: u32;
+            match read(&mut stream) {
+                Ok(response) => {
+                    info!("Read response from server: {:?}", response);
+                    if response == "OK" {
                         info!("OK from server");
-                        res = addr
-                            .send(PointsConsumingOrder {
-                                coffe_points: next_order.coffee_points,
-                            })
-                            .await
-                            .unwrap();
-                        info!("Result from Coffee Maker: {}", res);
+                        match next_order.operation.as_str() {
+                            "SUBS" => {
+                                res = addr
+                                    .send(PointsConsumingOrder {
+                                        coffe_points: next_order.coffee_points,
+                                    })
+                                    .await
+                                    .unwrap();
+                            }
+                            "ADD" => {
+                                res = addr
+                                    .send(PointEarningOrder {
+                                        coffe_points: next_order.coffee_points,
+                                    })
+                                    .await
+                                    .unwrap();
+                            }
+                            _ => {
+                                res = 0;
+                                error!("Invalid Order operation")
+                            }
+                        }
+                        info!("Result from Coffee Maker: {} coffe points", res);
                     } else {
                         //FIXME -
                         res = 0;
                         error!("Not OK from server")
                     }
                 }
-                Err(_) => {
+                Err(e) => {
                     //FIXME
                     res = 0;
-                    error!("Error reading from TCP connection")
+                    error!("{}", e)
                 }
             }
 
             // 3. Send results
-            let response = format!("RES, account_id: {}, coffee_points: {} \n", 1, res);
-            if let Ok(bytes_written) = stream.write(&response.as_bytes()) {
-                info!("Write results to Server bytes: {}", bytes_written);
+            let response_message = format!(
+                "RES, {}, account_id: {}, coffee_points: {} \n",
+                next_order.operation, 1, res
+            );
+            match send(&mut stream, response_message) {
+                Ok(_) => info!("Send RES message to Server"),
+                Err(e) => error!("{}", e),
             }
 
             // 4.  Waits for ACK
-            let mut ack = String::new();
-            match stream.read_to_string(&mut ack) {
-                Ok(_) => {
+            info!("Wait for ACK response from server");
+            match read(&mut stream) {
+                Ok(response) => {
                     info!("Read response from server after writing");
-                    if ack == "ACK" {
+                    if response == "ACK" {
                         info!("ACK from server");
                     } else {
                         error!("Not ACK from server")
                     }
                 }
-                Err(_) => error!("Error reading from TCP connection"),
+                Err(e) => error!("{}", e),
             }
         }
     } else {
