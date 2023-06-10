@@ -137,6 +137,10 @@ impl Handler<SubtractPoints> for LocalServer {
 
 #[cfg(test)]
 mod local_server_test {
+    use std::sync::Condvar;
+
+    use crate::structs::token::Token;
+
     use super::*;
 
     #[actix_rt::test]
@@ -157,6 +161,10 @@ mod local_server_test {
     async fn test_block_points_existent_account() {
         let server = LocalServer::new().unwrap();
         let server_addr = server.start();
+        let token_monitor = Arc::new((
+            Mutex::new(Token::new()),
+            Condvar::new(),
+        ));
         let add_msg = AddPoints {
             customer_id: 123,
             points: 10,
@@ -164,6 +172,7 @@ mod local_server_test {
         let block_msg = BlockPoints {
             customer_id: 123,
             points: 10,
+            token_monitor
         };
 
         let _ = server_addr.send(add_msg).await.unwrap();
@@ -176,9 +185,14 @@ mod local_server_test {
     async fn test_block_points_nonexistent_account() {
         let server = LocalServer::new().unwrap();
         let server_addr = server.start();
+        let token_monitor = Arc::new((
+            Mutex::new(Token::new()),
+            Condvar::new(),
+        ));
         let block_msg = BlockPoints {
             customer_id: 123,
             points: 10,
+            token_monitor
         };
 
         let result = server_addr.send(block_msg).await.unwrap();
@@ -190,6 +204,10 @@ mod local_server_test {
     async fn test_subtract_points_existent_account() {
         let server = LocalServer::new().unwrap();
         let server_addr = server.start();
+        let token_monitor = Arc::new((
+            Mutex::new(Token::new()),
+            Condvar::new(),
+        ));
         let add_msg = AddPoints {
             customer_id: 123,
             points: 10,
@@ -197,6 +215,7 @@ mod local_server_test {
         let block_msg = BlockPoints {
             customer_id: 123,
             points: 10,
+            token_monitor
         };
         let sub_msg = SubtractPoints {
             customer_id: 123,
@@ -228,6 +247,10 @@ mod local_server_test {
     async fn test_concurrent_account_points_changing() {
         let server = LocalServer::new().unwrap();
         let server_addr = server.start();
+        let token_monitor = Arc::new((
+            Mutex::new(Token::new()),
+            Condvar::new(),
+        ));
         let add_msg = AddPoints {
             customer_id: 123,
             points: 10,
@@ -235,10 +258,12 @@ mod local_server_test {
         let block_msg = BlockPoints {
             customer_id: 123,
             points: 10,
+            token_monitor: token_monitor.clone()
         };
         let block_msg_2 = BlockPoints {
             customer_id: 123,
             points: 10,
+            token_monitor: token_monitor.clone()
         };
         let sub_msg = SubtractPoints {
             customer_id: 123,
