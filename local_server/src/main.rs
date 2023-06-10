@@ -16,7 +16,7 @@ use local_server::{
 async fn main() {
     let system = System::new();
     let server_address = LocalServer::new().unwrap().start();
-    let token_monitor = Arc::new((
+    let token_monitor: Arc<(Mutex<Token>, Condvar)> = Arc::new((
         Mutex::new(Token::new()),
         Condvar::new(),
     ));

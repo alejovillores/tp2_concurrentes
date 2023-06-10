@@ -2,19 +2,23 @@ use actix::{Actor, Context, Handler, Message};
 use log::{error, info, warn};
 use std::{
     io::{BufReader, Read, Write},
-    net::TcpStream,
+    
 };
+use mockall_double::double;
+
+#[double]
+use super::connection::Connection;
 
 use super::messages::SendToken;
 
 pub struct NeighborRight {
-    connection: Option<TcpStream>,
+    connection: Connection,
 }
 
 impl NeighborRight {
-    pub fn new(connection: TcpStream) -> Self {
+    pub fn new(connection: Connection) -> Self {
         Self {
-            connection: Some(connection),
+            connection,
         }
     }
 }
@@ -29,19 +33,36 @@ impl Handler<SendToken> for NeighborRight {
     fn handle(&mut self, _msg: SendToken, _ctx: &mut Context<Self>) -> Self::Result {
         env_logger::init();
 
-        if let Some(connection) = self.connection.as_mut() {
-            let message = "TOKEN \n".as_bytes();
-            match connection.write(message) {
-                Ok(_) => {
-                    info!("Sent token to next server");
-                    return String::from("OK");
-                }
-                Err(_) => {
-                    error!("Failed writting to next server");
-                    return String::from("FAIL");
-                }
+        let message = "TOKEN \n".as_bytes();
+        match self.connection.write(message) {
+            Ok(_) => {
+                info!("Sent token to next server");
+                return String::from("OK");
+            }
+            Err(_) => {
+                error!("Failed writting to next server");
+                return String::from("FAIL");
             }
         }
-        return String::from("No TcpStream in neighbor");
+    }
+}
+
+
+#[cfg(test)]
+mod neighbor_right_test {
+
+    use super::*;
+
+    #[actix_rt::test]
+    async fn test01_right_neighbor_send_token_ok(){
+        let mut mock_connection = Connection::default();
+        mock_connection
+            .expect_write()
+            .returning(|_| Ok(()));
+
+        let actor = NeighborRight::new(mock_connection).start();
+        let res = actor.send(SendToken{});
+
+        assert_eq!(res.await.unwrap(), "OK")
     }
 }
