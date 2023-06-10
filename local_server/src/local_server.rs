@@ -167,6 +167,13 @@ mod local_server_test {
         let server = LocalServer::new().unwrap();
         let server_addr = server.start();
         let token_monitor = Arc::new((Mutex::new(Token::new()), Condvar::new()));
+                
+        { 
+            let mut token = token_monitor.0.lock().unwrap();
+            token.avaliable();
+        }
+
+
         let add_msg = AddPoints {
             customer_id: 123,
             points: 10,
@@ -188,6 +195,12 @@ mod local_server_test {
         let server = LocalServer::new().unwrap();
         let server_addr = server.start();
         let token_monitor = Arc::new((Mutex::new(Token::new()), Condvar::new()));
+
+        { 
+            let mut token = token_monitor.0.lock().unwrap();
+            token.avaliable();
+        }
+
         let block_msg = BlockPoints {
             customer_id: 123,
             points: 10,
@@ -204,6 +217,13 @@ mod local_server_test {
         let server = LocalServer::new().unwrap();
         let server_addr = server.start();
         let token_monitor = Arc::new((Mutex::new(Token::new()), Condvar::new()));
+                
+        { 
+            let mut token = token_monitor.0.lock().unwrap();
+            token.avaliable();
+        }
+
+
         let add_msg = AddPoints {
             customer_id: 123,
             points: 10,
@@ -244,6 +264,13 @@ mod local_server_test {
         let server = LocalServer::new().unwrap();
         let server_addr = server.start();
         let token_monitor = Arc::new((Mutex::new(Token::new()), Condvar::new()));
+                
+        { 
+            let mut token = token_monitor.0.lock().unwrap();
+            token.avaliable();
+        }
+
+
         let add_msg = AddPoints {
             customer_id: 123,
             points: 10,
