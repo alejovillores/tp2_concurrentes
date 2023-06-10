@@ -14,9 +14,10 @@ use local_server::{
 async fn main() {
     let system = System::new();
     let server_address = LocalServer::new().unwrap().start();
+
     let listener = TcpListener::bind("127.0.0.1:8081").expect("Failed to bind address");
 
-    info!("Esperando conexiones!");
+    info!("Waiting for connections conexiones!");
 
     for stream in listener.incoming() {
         match stream {

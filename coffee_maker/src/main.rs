@@ -77,7 +77,7 @@ async fn main() {
                 },
                 Err(_) => {
                     warn!("There are no more orders left to prepare");
-                    let end_message = format!("REQ \n",);
+                    let end_message = "REQ \n".to_string();
                     match send(&mut stream, end_message) {
                         Ok(_) => {}
                         Err(e) => error!("{}", e),
