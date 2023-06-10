@@ -5,7 +5,7 @@ use local_server::structs::token::Token;
 use log::{error, info};
 use std::io::{BufRead, BufReader, Write};
 use std::net::{TcpListener, TcpStream};
-use std::sync::{Arc, Mutex, Condvar};
+use std::sync::{Arc, Condvar, Mutex};
 
 use local_server::{
     local_server::LocalServer,
@@ -16,16 +16,13 @@ use local_server::{
 async fn main() {
     let system = System::new();
     let server_address = LocalServer::new().unwrap().start();
-    let token_monitor: Arc<(Mutex<Token>, Condvar)> = Arc::new((
-        Mutex::new(Token::new()),
-        Condvar::new(),
-    ));
+    let token_monitor: Arc<(Mutex<Token>, Condvar)> =
+        Arc::new((Mutex::new(Token::new()), Condvar::new()));
 
     let listener = TcpListener::bind("127.0.0.1:8081").expect("Failed to bind address");
 
     info!("Waiting for connections conexiones!");
 
-    
     for stream in listener.incoming() {
         let token_monitor_clone = token_monitor.clone();
 
@@ -45,7 +42,11 @@ async fn main() {
     system.run().unwrap();
 }
 
-async fn handle_client(mut stream: TcpStream, server_address: Addr<LocalServer>, token_monitor: Arc<(Mutex<Token>, Condvar)>) {
+async fn handle_client(
+    mut stream: TcpStream,
+    server_address: Addr<LocalServer>,
+    token_monitor: Arc<(Mutex<Token>, Condvar)>,
+) {
     let reader = BufReader::new(stream.try_clone().expect(""));
     for line in reader.lines() {
         let token_monitor_clone = token_monitor.clone();
@@ -62,7 +63,7 @@ async fn handle_client(mut stream: TcpStream, server_address: Addr<LocalServer>,
                             let msg = BlockPoints {
                                 customer_id,
                                 points,
-                                token_monitor: token_monitor_clone
+                                token_monitor: token_monitor_clone,
                             };
 
                             server_address.send(msg).await

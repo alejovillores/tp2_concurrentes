@@ -1,9 +1,8 @@
-use std::{net::TcpStream, io::Write};
 use mockall::automock;
-
+use std::{io::Write, net::TcpStream};
 
 pub struct Connection {
-    stream: Option<TcpStream>
+    stream: Option<TcpStream>,
 }
 
 #[automock]
@@ -12,8 +11,8 @@ impl Connection {
         Self { stream }
     }
 
-    pub fn write(&mut self, buf: &[u8]) -> Result<(), String>{
-        if let Some(stream) = self.stream.as_mut(){
+    pub fn write(&mut self, buf: &[u8]) -> Result<(), String> {
+        if let Some(stream) = self.stream.as_mut() {
             stream.write(buf).expect("Error writting tcp stream");
         }
         Err(String::from("Error no tcp stream"))

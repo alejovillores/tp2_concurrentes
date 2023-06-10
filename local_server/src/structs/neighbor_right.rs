@@ -1,10 +1,7 @@
 use actix::{Actor, Context, Handler, Message};
 use log::{error, info, warn};
-use std::{
-    io::{BufReader, Read, Write},
-    
-};
 use mockall_double::double;
+use std::io::{BufReader, Read, Write};
 
 #[double]
 use super::connection::Connection;
@@ -17,9 +14,7 @@ pub struct NeighborRight {
 
 impl NeighborRight {
     pub fn new(connection: Connection) -> Self {
-        Self {
-            connection,
-        }
+        Self { connection }
     }
 }
 
@@ -47,21 +42,18 @@ impl Handler<SendToken> for NeighborRight {
     }
 }
 
-
 #[cfg(test)]
 mod neighbor_right_test {
 
     use super::*;
 
     #[actix_rt::test]
-    async fn test01_right_neighbor_send_token_ok(){
+    async fn test01_right_neighbor_send_token_ok() {
         let mut mock_connection = Connection::default();
-        mock_connection
-            .expect_write()
-            .returning(|_| Ok(()));
+        mock_connection.expect_write().returning(|_| Ok(()));
 
         let actor = NeighborRight::new(mock_connection).start();
-        let res = actor.send(SendToken{});
+        let res = actor.send(SendToken {});
 
         assert_eq!(res.await.unwrap(), "OK")
     }

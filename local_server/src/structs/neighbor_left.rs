@@ -1,13 +1,13 @@
 use log::{error, info, warn};
 use std::{
     io::{BufReader, Read},
-    net::TcpStream, sync::{Arc, Mutex, Condvar},
+    net::TcpStream,
+    sync::{Arc, Condvar, Mutex},
 };
 
 use super::token::Token;
 
 const TOKEN: usize = 1;
-
 
 pub struct NeighborLeft {
     connection: Option<TcpStream>,
@@ -30,8 +30,6 @@ impl NeighborLeft {
             info!("Token is avaliable for using");
             cvar.notify_all();
         };
-        
-
     }
 
     fn handle_sync(&self) {
