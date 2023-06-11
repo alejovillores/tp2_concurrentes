@@ -71,7 +71,7 @@ async fn handle_client(
                             server_address.send(msg).await
                         }
                         _ => {
-                            w.write_all(b"ERR: Invalid method\n").await;
+                            w.write_all(b"ERR: Invalid method\n").await.unwrap();
                             Err(actix::MailboxError::Closed)
                         }
                     };
@@ -121,7 +121,7 @@ async fn handle_client(
                             Err(actix::MailboxError::Closed)
                         }
                     };
-                    handle_result(&mut w, result);
+                    handle_result(&mut w, result).await;
                 } else {
                     w.write_all(b"ERR: Invalid format\n").await.expect("error");
                 }
