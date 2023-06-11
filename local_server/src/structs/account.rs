@@ -45,6 +45,11 @@ impl Account {
             Err("No hay suficientes puntos bloqueados".to_string())
         }
     }
+
+    pub fn sync(&mut self, points: u32) -> Result<(), String> {
+        self.points = points;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -133,5 +138,15 @@ mod account_test {
         assert_eq!(account.points, 15);
         assert_eq!(account.blocked_points, 5);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_sync_account_success() {
+        let mut account = Account::new(123).unwrap();
+        let points = 20;
+        let result = account.sync(points);
+        assert_eq!(account.points, 20);
+        assert_eq!(account.blocked_points, 0);
+        assert!(result.is_ok());
     }
 }
