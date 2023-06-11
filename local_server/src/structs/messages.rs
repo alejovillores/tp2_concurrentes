@@ -26,5 +26,4 @@ pub struct SubtractPoints {
 pub struct SyncAccount {
     pub customer_id: u32,
     pub points: u32,
-    pub blocked_points: u32,
 }

@@ -46,9 +46,8 @@ impl Account {
         }
     }
 
-    pub fn sync(&mut self, points: u32, blocked_points: u32) -> Result<(), String> {
+    pub fn sync(&mut self, points: u32) -> Result<(), String> {
         self.points = points;
-        self.blocked_points = blocked_points;
         Ok(())
     }
 }
@@ -144,11 +143,10 @@ mod account_test {
     #[test]
     fn test_sync_account_success() {
         let mut account = Account::new(123).unwrap();
-        let blocked_points = 15;
         let points = 20;
-        let result = account.sync(points, blocked_points);
+        let result = account.sync(points);
         assert_eq!(account.points, 20);
-        assert_eq!(account.blocked_points, 15);
+        assert_eq!(account.blocked_points, 0);
         assert!(result.is_ok());
     }
 }

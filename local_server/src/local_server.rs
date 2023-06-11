@@ -134,7 +134,6 @@ impl Handler<SyncAccount> for LocalServer {
     fn handle(&mut self, msg: SyncAccount, _ctx: &mut Context<Self>) -> Self::Result {
         let customer_id = msg.customer_id;
         let points = msg.points;
-        let blocked_points = msg.blocked_points;
 
         let account = match self.accounts.entry(customer_id) {
             Entry::Occupied(o) => o.into_mut(),
@@ -151,7 +150,7 @@ impl Handler<SyncAccount> for LocalServer {
         };
         match account.lock() {
             Ok(mut account_lock) => {
-                let _ = account_lock.sync(points, blocked_points);
+                let _ = account_lock.sync(points);
                 info!("Account {} synched", customer_id);
                 "OK".to_string()
             }
@@ -216,7 +215,6 @@ mod local_server_test {
         let sync_msg = SyncAccount {
             customer_id: 123,
             points: 15,
-            blocked_points: 10,
         };
 
         let result = server_addr.send(sync_msg).await.unwrap();
