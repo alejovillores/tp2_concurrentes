@@ -1,4 +1,5 @@
 #[allow(dead_code)]
+#[derive(Debug)]
 pub struct Account {
     pub customer_id: u32,
     pub points: u32,
