@@ -37,7 +37,7 @@ impl Handler<AddPoints> for LocalServer {
 
         let points_added = match self.points_added.entry(customer_id) {
             Entry::Occupied(o) => o.into_mut(),
-            Entry::Vacant(v) => v.insert(Arc::new(Mutex::new(customer_id))),
+            Entry::Vacant(v) => v.insert(Arc::new(Mutex::new(0))),
         };
         match points_added.lock() {
             Ok(mut points_added_lock) => {
