@@ -7,7 +7,9 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use crate::structs::account::Account;
-use crate::structs::messages::{AddPoints, BlockPoints, SubtractPoints, SyncAccount};
+use crate::structs::messages::{
+    AddPoints, BlockPoints, SubtractPoints, SyncAccount, UnblockPoints,
+};
 
 #[allow(dead_code)]
 pub struct LocalServer {
@@ -87,6 +89,7 @@ impl Handler<BlockPoints> for LocalServer {
                 }
             }
         } else {
+            error!("Account {} does not exist", customer_id);
             "ERROR".to_string()
         }
     }
@@ -123,6 +126,44 @@ impl Handler<SubtractPoints> for LocalServer {
                 }
             }
         } else {
+            error!("Account {} does not exist", customer_id);
+            "ERROR".to_string()
+        }
+    }
+}
+
+impl Handler<UnblockPoints> for LocalServer {
+    type Result = String;
+
+    fn handle(&mut self, msg: UnblockPoints, _ctx: &mut Context<Self>) -> Self::Result {
+        let customer_id = msg.customer_id;
+        let points = msg.points;
+
+        if let Some(account) = self.accounts.get_mut(&customer_id) {
+            match account.lock() {
+                Ok(mut account_lock) => {
+                    let result = account_lock.unblock_points(points);
+                    if result.is_ok() {
+                        info!("{} points unblocked from account {}", points, customer_id);
+                        "ACK".to_string()
+                    } else {
+                        error!(
+                            "Couldn't unblock {} points from account {}",
+                            points, customer_id
+                        );
+                        "ERROR".to_string()
+                    }
+                }
+                Err(_) => {
+                    error!(
+                        "Can't get lock from account {} to unblock {} points",
+                        customer_id, points
+                    );
+                    "ERROR".to_string()
+                }
+            }
+        } else {
+            error!("Account {} does not exist", customer_id);
             "ERROR".to_string()
         }
     }
@@ -199,6 +240,20 @@ mod local_server_test {
         let server = LocalServer::new().unwrap();
         let server_addr = server.start();
         let sub_msg = SubtractPoints {
+            customer_id: 123,
+            points: 10,
+        };
+
+        let result = server_addr.send(sub_msg).await.unwrap();
+
+        assert_eq!(result, "ERROR".to_string());
+    }
+
+    #[actix_rt::test]
+    async fn test_unblock_points_nonexistent_account() {
+        let server = LocalServer::new().unwrap();
+        let server_addr = server.start();
+        let sub_msg = UnblockPoints {
             customer_id: 123,
             points: 10,
         };
