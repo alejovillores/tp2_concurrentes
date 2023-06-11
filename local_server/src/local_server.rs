@@ -43,7 +43,7 @@ impl Handler<AddPoints> for LocalServer {
             Ok(mut points_added_lock) => {
                 *points_added_lock += points;
                 info!("{} points added to account {}", points, customer_id);
-                "OK".to_string()
+                "ACK".to_string()
             }
             Err(_) => {
                 error!(
@@ -105,7 +105,7 @@ impl Handler<SubtractPoints> for LocalServer {
                     let result = account_lock.subtract_points(points);
                     if result.is_ok() {
                         info!("{} points consumed from account {}", points, customer_id);
-                        "OK".to_string()
+                        "ACK".to_string()
                     } else {
                         error!(
                             "Couldn't consume {} points from account {}",
@@ -178,7 +178,7 @@ mod local_server_test {
 
         let result = server_addr.send(msg).await.unwrap();
 
-        assert_eq!(result, "OK".to_string());
+        assert_eq!(result, "ACK".to_string());
     }
 
     #[actix_rt::test]
