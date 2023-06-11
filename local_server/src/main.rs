@@ -7,6 +7,7 @@ use std::io::{BufRead, BufReader, Write};
 use std::net::{TcpListener, TcpStream};
 use std::sync::{Arc, Condvar, Mutex};
 
+use local_server::structs::messages::UnblockPoints;
 use local_server::{
     local_server::LocalServer,
     structs::messages::{AddPoints, BlockPoints, SubtractPoints},
@@ -91,6 +92,13 @@ async fn handle_client(
                             }
                             "SUBS" => {
                                 let msg = SubtractPoints {
+                                    customer_id,
+                                    points,
+                                };
+                                server_address.send(msg).await
+                            }
+                            "UNBL" => {
+                                let msg = UnblockPoints {
                                     customer_id,
                                     points,
                                 };
