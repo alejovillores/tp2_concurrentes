@@ -62,7 +62,8 @@ async fn main() {
     if let Ok(mut stream) = TcpStream::connect("127.0.0.1:8888") {
         info!("Connected to the server!");
         loop {
-            let next_order;
+            let mut next_order;
+
             let take_order_result = addr.send(TakeOrder {}).await;
             match take_order_result {
                 Ok(_next_order) => match _next_order {
@@ -86,64 +87,68 @@ async fn main() {
                 }
             }
 
-            // 1. Ask for points
-            let request_message = format!(
-                "REQ, account_id: {}, coffee_points: {} \n",
-                next_order.account_id, next_order.coffee_points
-            );
-            match send(&mut stream, request_message) {
-                Ok(_) => info!("Send REQ message to Server"),
-                Err(e) => error!("{}", e),
+            if next_order.operation == "ADD" {
+                if addr.send(PointEarningOrder {coffe_points: next_order.coffee_points})
+                .await
+                .unwrap() == false {
+                    next_order.operation = "UNBL".to_string();
+                }
             }
+            else {
+                // 1. Ask for points
+                let request_message = format!(
+                    "REQ, account_id: {}, coffee_points: {} \n",
+                    next_order.account_id, next_order.coffee_points
+                );
+                match send(&mut stream, request_message) {
+                    Ok(_) => info!("Send REQ message to Server"),
+                    Err(e) => error!("{}", e),
+                }
+    
+                // 2. Wait for OK response
+                info!("Wait for OK response from server");
+                match read(&mut stream) {
+                    Ok(response) => {
+                        info!("Read response from server: {:?}", response);
+                        if response == "OK" {
+                            info!("OK from server");
+                            match next_order.operation.as_str() {
+                                "SUBS" => {
+                                    if addr
+                                        .send(PointsConsumingOrder {
+                                            coffe_points: next_order.coffee_points,
+                                        })
+                                        .await
+                                        .unwrap() == false {
+                                            next_order.operation = "UNBL".to_string();
 
-            // 2. Wait for OK response
-            info!("Wait for OK response from server");
-            let res: u32;
-            match read(&mut stream) {
-                Ok(response) => {
-                    info!("Read response from server: {:?}", response);
-                    if response == "OK" {
-                        info!("OK from server");
-                        match next_order.operation.as_str() {
-                            "SUBS" => {
-                                res = addr
-                                    .send(PointsConsumingOrder {
-                                        coffe_points: next_order.coffee_points,
-                                    })
-                                    .await
-                                    .unwrap();
+                                    }
+                                }
+                                _ => {
+                                    error!("Invalid Order operation");
+                                    next_order.operation = "UNBL".to_string();
+                                }
                             }
-                            "ADD" => {
-                                res = addr
-                                    .send(PointEarningOrder {
-                                        coffe_points: next_order.coffee_points,
-                                    })
-                                    .await
-                                    .unwrap();
-                            }
-                            _ => {
-                                res = 0;
-                                error!("Invalid Order operation")
-                            }
+                        } else {
+                            //FIXME -
+                            error!("Not OK from server");
+                            next_order.operation = "UNBL".to_string();
+
                         }
-                        info!("Result from Coffee Maker: {} coffe points", res);
-                    } else {
-                        //FIXME -
-                        res = 0;
-                        error!("Not OK from server")
+                    }
+                    Err(e) => {
+                        //FIXME
+                        error!("{}", e);
+                        next_order.operation = "UNBL".to_string();
                     }
                 }
-                Err(e) => {
-                    //FIXME
-                    res = 0;
-                    error!("{}", e)
-                }
+                
             }
 
             // 3. Send results
             let response_message = format!(
                 "RES, {}, account_id: {}, coffee_points: {} \n",
-                next_order.operation, 1, res
+                next_order.operation, next_order.account_id,next_order.coffee_points 
             );
             match send(&mut stream, response_message) {
                 Ok(_) => info!("Send RES message to Server"),
