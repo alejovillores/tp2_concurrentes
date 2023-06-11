@@ -88,13 +88,17 @@ async fn main() {
             }
 
             if next_order.operation == "ADD" {
-                if addr.send(PointEarningOrder {coffe_points: next_order.coffee_points})
-                .await
-                .unwrap() == false {
+                if addr
+                    .send(PointEarningOrder {
+                        coffe_points: next_order.coffee_points,
+                    })
+                    .await
+                    .unwrap()
+                    == false
+                {
                     next_order.operation = "UNBL".to_string();
                 }
-            }
-            else {
+            } else {
                 // 1. Ask for points
                 let request_message = format!(
                     "REQ, account_id: {}, coffee_points: {} \n",
@@ -104,7 +108,7 @@ async fn main() {
                     Ok(_) => info!("Send REQ message to Server"),
                     Err(e) => error!("{}", e),
                 }
-    
+
                 // 2. Wait for OK response
                 info!("Wait for OK response from server");
                 match read(&mut stream) {
@@ -119,9 +123,10 @@ async fn main() {
                                             coffe_points: next_order.coffee_points,
                                         })
                                         .await
-                                        .unwrap() == false {
-                                            next_order.operation = "UNBL".to_string();
-
+                                        .unwrap()
+                                        == false
+                                    {
+                                        next_order.operation = "UNBL".to_string();
                                     }
                                 }
                                 _ => {
@@ -133,7 +138,6 @@ async fn main() {
                             //FIXME -
                             error!("Not OK from server");
                             next_order.operation = "UNBL".to_string();
-
                         }
                     }
                     Err(e) => {
@@ -142,13 +146,12 @@ async fn main() {
                         next_order.operation = "UNBL".to_string();
                     }
                 }
-                
             }
 
             // 3. Send results
             let response_message = format!(
                 "RES, {}, account_id: {}, coffee_points: {} \n",
-                next_order.operation, next_order.account_id,next_order.coffee_points 
+                next_order.operation, next_order.account_id, next_order.coffee_points
             );
             match send(&mut stream, response_message) {
                 Ok(_) => info!("Send RES message to Server"),

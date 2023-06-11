@@ -57,5 +57,4 @@ mod neighbor_right_test {
 
         assert_eq!(res.await.unwrap(), "OK")
     }
-
 }
