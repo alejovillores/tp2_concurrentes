@@ -52,7 +52,7 @@ fn main() {
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
-                print!("New connection\n");
+                println!("New connection\n");
                 // Spawn a new thread to handle each client connection
                 thread::spawn(move || {
                     handle_client(stream);

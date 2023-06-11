@@ -16,8 +16,8 @@ use crate::utils::probablity_calculator::ProbabilityCalculator;
 #[double]
 use crate::utils::order_parser::OrderParser;
 
-const COFFE_MADE: u32 = 0;
-const COFFE_NOT_MADE: u32 = 0;
+const COFFE_MADE: i32 = 0;
+const COFFE_NOT_MADE: i32 = 0;
 
 #[allow(dead_code)]
 pub struct CoffeeMaker {
@@ -54,34 +54,28 @@ impl Actor for CoffeeMaker {
 }
 
 impl Handler<PointsConsumingOrder> for CoffeeMaker {
-    type Result = u32;
+    type Result = bool;
 
     fn handle(
         &mut self,
-        msg: PointsConsumingOrder,
+        _msg: PointsConsumingOrder,
         _ctx: &mut <CoffeeMaker as Actor>::Context,
     ) -> Self::Result {
-        if self.calculator.calculate_probability(self.probability) {
-            return COFFE_MADE;
-        }
-        msg.coffe_points
+        self.calculator.calculate_probability(self.probability)
     }
 }
 
 impl Handler<PointEarningOrder> for CoffeeMaker {
-    type Result = u32;
+    type Result = bool;
 
     // If the process fails, points are not added
     // If the process succes, new points are able to be added.
     fn handle(
         &mut self,
-        msg: PointEarningOrder,
+        _msg: PointEarningOrder,
         _ctx: &mut <CoffeeMaker as Actor>::Context,
     ) -> Self::Result {
-        if self.calculator.calculate_probability(self.probability) {
-            return msg.coffe_points;
-        }
-        COFFE_NOT_MADE
+        self.calculator.calculate_probability(self.probability)
     }
 }
 
@@ -117,7 +111,7 @@ mod coffee_maker_test {
             .start();
         let res = actor.send(PointsConsumingOrder { coffe_points: 10 });
 
-        assert_eq!(res.await.unwrap(), 0)
+        assert!(res.await.unwrap())
     }
 
     #[actix_rt::test]
@@ -137,7 +131,7 @@ mod coffee_maker_test {
             .start();
         let res = actor.send(PointsConsumingOrder { coffe_points: 10 });
 
-        assert_eq!(res.await.unwrap(), 10)
+        assert!(!res.await.unwrap())
     }
 
     #[actix_rt::test]
@@ -157,7 +151,7 @@ mod coffee_maker_test {
             .start();
         let res = actor.send(PointEarningOrder { coffe_points: 10 });
 
-        assert_eq!(res.await.unwrap(), 10)
+        assert!(res.await.unwrap())
     }
 
     #[actix_rt::test]
@@ -177,7 +171,7 @@ mod coffee_maker_test {
             .start();
         let res = actor.send(PointEarningOrder { coffe_points: 10 });
 
-        assert_eq!(res.await.unwrap(), 0)
+        assert!(!res.await.unwrap())
     }
 
     #[actix_rt::test]

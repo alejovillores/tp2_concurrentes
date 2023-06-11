@@ -1,9 +1,11 @@
 extern crate actix;
 
 use actix::{Actor, Addr, MailboxError, System};
+use local_server::structs::token::Token;
 use log::{error, info};
 use std::io::{BufRead, BufReader, Write};
 use std::net::{TcpListener, TcpStream};
+use std::sync::{Arc, Condvar, Mutex};
 
 use local_server::structs::messages::UnblockPoints;
 use local_server::{
@@ -15,16 +17,21 @@ use local_server::{
 async fn main() {
     let system = System::new();
     let server_address = LocalServer::new().unwrap().start();
+    let token_monitor: Arc<(Mutex<Token>, Condvar)> =
+        Arc::new((Mutex::new(Token::new()), Condvar::new()));
+
     let listener = TcpListener::bind("127.0.0.1:8081").expect("Failed to bind address");
 
-    info!("Esperando conexiones!");
+    info!("Waiting for connections conexiones!");
 
     for stream in listener.incoming() {
+        let token_monitor_clone = token_monitor.clone();
+
         match stream {
             Ok(stream) => {
                 let server_addr_clone = server_address.clone();
                 actix_rt::spawn(async move {
-                    handle_client(stream, server_addr_clone).await;
+                    handle_client(stream, server_addr_clone, token_monitor_clone).await;
                 });
             }
             Err(e) => {
@@ -36,9 +43,14 @@ async fn main() {
     system.run().unwrap();
 }
 
-async fn handle_client(mut stream: TcpStream, server_address: Addr<LocalServer>) {
+async fn handle_client(
+    mut stream: TcpStream,
+    server_address: Addr<LocalServer>,
+    token_monitor: Arc<(Mutex<Token>, Condvar)>,
+) {
     let reader = BufReader::new(stream.try_clone().expect(""));
     for line in reader.lines() {
+        let token_monitor_clone = token_monitor.clone();
         match line {
             Ok(line) => {
                 let parts: Vec<&str> = line.split(',').map(|s| s.trim()).collect();
@@ -52,7 +64,9 @@ async fn handle_client(mut stream: TcpStream, server_address: Addr<LocalServer>)
                             let msg = BlockPoints {
                                 customer_id,
                                 points,
+                                token_monitor: token_monitor_clone,
                             };
+
                             server_address.send(msg).await
                         }
                         _ => {

@@ -1,7 +1,7 @@
 use actix::Message;
 
 #[derive(Message)]
-#[rtype(result = "u32")]
+#[rtype(result = "bool")]
 pub struct PointEarningOrder {
-    pub coffe_points: u32,
+    pub coffe_points: i32,
 }
