@@ -23,6 +23,13 @@ pub struct SubtractPoints {
 
 #[derive(Message, Debug)]
 #[rtype(result = "String")]
+pub struct UnblockPoints {
+    pub customer_id: u32,
+    pub points: u32,
+}
+
+#[derive(Message, Debug)]
+#[rtype(result = "String")]
 pub struct SyncAccount {
     pub customer_id: u32,
     pub points: u32,
