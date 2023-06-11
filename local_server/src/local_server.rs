@@ -70,28 +70,25 @@ impl Handler<BlockPoints> for LocalServer {
         if let Ok(guard) = token_lock.lock() {
             if let Ok(_) = cvar.wait_while(guard, |token| !token.is_avaliable()) {
                 match self.accounts.get_mut(&customer_id) {
-                    Some(account) => {
-                        match account.lock() {
-                            Ok(mut account_lock) => {
-                                let result = account_lock.block_points(points);
-                                if result.is_ok() {
-                                    info!("{} points blocked from account {}", points, customer_id);
-                                    
-                                } else {
-                                    error!(
-                                        "Couldn't block {} points from account {}",
-                                        points, customer_id
-                                    );
-                                    return "ERROR".to_string();
-                                }
-                            }
-                            Err(_) => {
+                    Some(account) => match account.lock() {
+                        Ok(mut account_lock) => {
+                            let result = account_lock.block_points(points);
+                            if result.is_ok() {
+                                info!("{} points blocked from account {}", points, customer_id);
+                            } else {
                                 error!(
-                                    "Can't get lock from account {} to block {} points",
-                                    customer_id, points
+                                    "Couldn't block {} points from account {}",
+                                    points, customer_id
                                 );
                                 return "ERROR".to_string();
                             }
+                        }
+                        Err(_) => {
+                            error!(
+                                "Can't get lock from account {} to block {} points",
+                                customer_id, points
+                            );
+                            return "ERROR".to_string();
                         }
                     },
                     None => {
@@ -102,7 +99,7 @@ impl Handler<BlockPoints> for LocalServer {
             }
         } else {
             error!("Account {} does not exist", customer_id);
-            "ERROR".to_string()
+            return "ERROR".to_string();
         }
         cvar.notify_all();
         ok_result_msg
