@@ -2,8 +2,8 @@ use actix::{Actor, Addr, MailboxError};
 use local_server::structs::neighbor_left::NeighborLeft;
 use local_server::structs::token::Token;
 use log::{error, info};
-use tokio::join;
 use std::sync::{Arc, Condvar, Mutex};
+use tokio::join;
 
 use local_server::structs::messages::UnblockPoints;
 use local_server::{
@@ -12,7 +12,6 @@ use local_server::{
 };
 use tokio::io::{self, split, AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
-
 
 #[actix_rt::main]
 async fn main() {
@@ -26,7 +25,6 @@ async fn main() {
         .await
         .expect("Failed to bind address");
 
-
     // TODO: Separar en 1 funcion por thread
     // TODO: 1 funcion listener de la cafetera
     // TODO: 1 funcion listener del vecino izquierdo
@@ -38,7 +36,7 @@ async fn main() {
             .expect("Failed to bind left neighbor address");
 
         info!("Left Neighbor listening on 127.0.0.1:5001");
-        
+
         let left_neighbor = NeighborLeft::new(listener);
         left_neighbor.start(token_monitor_clone).await
     });
@@ -61,7 +59,6 @@ async fn main() {
             }
         }
     }
-
 }
 
 async fn handle_client(
