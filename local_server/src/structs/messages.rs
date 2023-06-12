@@ -48,8 +48,11 @@ pub struct SyncAccount {
 }
 
 #[derive(Message, Debug)]
-#[rtype(result = "String")]
-pub struct SendToken {}
+#[rtype(result = "Result<(),String>")]
+pub struct SendToken {
+    pub id_actual: u8,
+    pub servers: u8,
+}
 
 #[derive(Message, Debug)]
 #[rtype(result = "String")]

@@ -47,7 +47,7 @@ async fn main() {
     let token_monitor_clone = token_monitor.clone();
     let _ = tokio::spawn(async move {
         info!("LEFT NEIGHBOR - listening on 127.0.0.1:500{}", id);
-        let left_neighbor = NeighborLeft::new(left_neighbor_listener);
+        let left_neighbor = NeighborLeft::new(left_neighbor_listener, id);
         left_neighbor
             .start(token_monitor_clone, righ_neighbor_clone)
             .await
@@ -55,7 +55,7 @@ async fn main() {
     });
 
     //SECTION - Right Neighbor Initialization
-    match connect_right_neigbor(id) {
+    match connect_right_neigbor(id, 3) {
         Ok(s) => {
             info!("Connecting Right Neighbor");
             righ_neighbor
@@ -64,7 +64,10 @@ async fn main() {
                 .expect("No pudo enviar al actor");
             if id == 1 {
                 righ_neighbor
-                    .send(SendToken {})
+                    .send(SendToken {
+                        id_actual: 1,
+                        servers: 3,
+                    })
                     .await
                     .expect("No pudo enviar al actor");
             }
@@ -259,10 +262,9 @@ async fn handle_result(w: &mut io::WriteHalf<TcpStream>, result: Result<String, 
     }
 }
 
-fn connect_right_neigbor(id: u8) -> Result<net::TcpStream, String> {
-    const COFFE_MAKERS: u8 = 3;
+fn connect_right_neigbor(id: u8, coffee_makers: u8) -> Result<net::TcpStream, String> {
     let socket;
-    if id == COFFE_MAKERS {
+    if id == coffee_makers {
         socket = format!("127.0.0.1:5001")
     } else {
         socket = format!("127.0.0.1:500{}", (id + 1))

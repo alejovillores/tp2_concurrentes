@@ -13,8 +13,14 @@ impl Connection {
 
     pub fn write(&mut self, buf: &[u8]) -> Result<(), String> {
         if let Some(stream) = self.stream.as_mut() {
-            stream.write(buf).expect("Error writting tcp stream");
-            return Ok(());
+            match stream.write(buf) {
+                Ok(_) => {
+                    return Ok(());
+                }
+                Err(_) => {
+                    return Err(String::from("Error no tcp stream"));
+                }
+            }
         }
         Err(String::from("Error no tcp stream"))
     }

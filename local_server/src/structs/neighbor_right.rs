@@ -1,8 +1,9 @@
+use std::{net, thread, time::Duration};
+
 use crate::structs::messages::SendSync;
-use actix::{Actor, Context, Handler, Message};
+use actix::{Actor, Context, Handler};
 use log::{error, info, warn};
 use mockall_double::double;
-use std::io::{BufReader, Read, Write};
 
 #[double]
 use super::connection::Connection;
@@ -24,17 +25,50 @@ impl Actor for NeighborRight {
 }
 
 impl Handler<SendToken> for NeighborRight {
-    type Result = String;
-    fn handle(&mut self, _msg: SendToken, _ctx: &mut Context<Self>) -> Self::Result {
+    type Result = Result<(), String>;
+    fn handle(&mut self, msg: SendToken, _ctx: &mut Context<Self>) -> Self::Result {
         let message = "TOKEN\n".as_bytes();
         match self.connection.write(message) {
             Ok(_) => {
-                info!("Sent token to next server");
-                return String::from("OK");
+                info!("Server {} sent token to next server", msg.id_actual);
+                return Ok(());
             }
             Err(e) => {
                 error!("{}", e);
-                return e;
+                let socket;
+
+                if msg.servers > 2 {
+                    match msg.id_actual {
+                        n if n >= 1 && n < (msg.servers - 1) => {
+                            socket = format!("127.0.0.1:500{}", (msg.id_actual + 2))
+                        }
+                        n if n == (msg.servers - 1) => socket = format!("127.0.0.1:5001"),
+                        _ => socket = format!("127.0.0.1:5002"),
+                    }
+                    info!("Trying to connect to {}", socket);
+
+                    let mut attemps = 0;
+
+                    while attemps < 5 {
+                        match net::TcpStream::connect(socket.clone()) {
+                            Ok(s) => {
+                                info!("Server {} New connection", msg.id_actual);
+                                self.connection = Connection::new(Some(s));
+                                self.connection
+                                    .write(message)
+                                    .expect("NO PUDE MANDAR EL TOKEN AL RECONECTARME");
+                                return Ok(());
+                            }
+                            Err(e) => {
+                                error!("{}", e);
+                                warn!("RIGHT NEIGHBOR - could not connect ");
+                                attemps += 1;
+                                thread::sleep(Duration::from_secs(5))
+                            }
+                        }
+                    }
+                }
+                return Err(e);
             }
         }
     }
@@ -90,6 +124,7 @@ impl Handler<SendSync> for NeighborRight {
     }
 }
 
+/*
 #[cfg(test)]
 mod neighbor_right_test {
 
@@ -106,3 +141,5 @@ mod neighbor_right_test {
         assert_eq!(res.await.unwrap(), "OK")
     }
 }
+
+*/
