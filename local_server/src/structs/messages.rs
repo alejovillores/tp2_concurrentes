@@ -1,4 +1,7 @@
-use std::{sync::{Arc, Condvar, Mutex}, net::TcpStream};
+use std::{
+    net::TcpStream,
+    sync::{Arc, Condvar, Mutex},
+};
 
 use actix::Message;
 
@@ -59,4 +62,3 @@ pub struct SendSync {
 pub struct ConfigStream {
     pub stream: TcpStream,
 }
-

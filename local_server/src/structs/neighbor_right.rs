@@ -7,7 +7,7 @@ use std::io::{BufReader, Read, Write};
 #[double]
 use super::connection::Connection;
 
-use super::messages::{SendToken, ConfigStream};
+use super::messages::{ConfigStream, SendToken};
 
 pub struct NeighborRight {
     pub connection: Connection,
@@ -33,7 +33,7 @@ impl Handler<SendToken> for NeighborRight {
                 return String::from("OK");
             }
             Err(e) => {
-                error!("{}",e);
+                error!("{}", e);
                 return e;
             }
         }
@@ -44,7 +44,6 @@ impl Handler<ConfigStream> for NeighborRight {
     type Result = ();
     fn handle(&mut self, msg: ConfigStream, _ctx: &mut Context<Self>) -> Self::Result {
         self.connection = Connection::new(Some(msg.stream));
-
     }
 }
 
@@ -53,7 +52,7 @@ impl Handler<SendSync> for NeighborRight {
     fn handle(&mut self, msg: SendSync, _ctx: &mut Context<Self>) -> Self::Result {
         let accounts = msg.accounts;
         let message = "SYNC\n".as_bytes();
-        
+
         match self.connection.write(message) {
             Ok(_) => info!("Started sync with right neighbor"),
             Err(err) => {

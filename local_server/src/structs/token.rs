@@ -24,7 +24,7 @@ impl Token {
         self.status = false;
     }
 
-    pub fn empty(&self)-> bool {
+    pub fn empty(&self) -> bool {
         self.cont == 0
     }
 }
