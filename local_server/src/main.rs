@@ -64,10 +64,7 @@ async fn main() {
                 .expect("No pudo enviar al actor");
             if id == 1 {
                 righ_neighbor
-                    .send(SendToken {
-                        id_actual: 1,
-                        servers: 3,
-                    })
+                    .send(SendToken {})
                     .await
                     .expect("No pudo enviar al actor");
             }

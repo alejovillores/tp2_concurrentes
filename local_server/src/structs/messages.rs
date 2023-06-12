@@ -49,10 +49,7 @@ pub struct SyncAccount {
 
 #[derive(Message, Debug)]
 #[rtype(result = "Result<(),String>")]
-pub struct SendToken {
-    pub id_actual: u8,
-    pub servers: u8,
-}
+pub struct SendToken {}
 
 #[derive(Message, Debug)]
 #[rtype(result = "String")]
@@ -64,4 +61,11 @@ pub struct SendSync {
 #[rtype(result = "()")]
 pub struct ConfigStream {
     pub stream: TcpStream,
+}
+
+#[derive(Message, Debug)]
+#[rtype(result = "()")]
+pub struct Reconnect {
+    pub id_actual: u8,
+    pub servers: u8,
 }

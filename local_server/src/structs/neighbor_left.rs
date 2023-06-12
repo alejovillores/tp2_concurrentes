@@ -6,7 +6,7 @@ use std::time::Duration;
 use tokio::io::{self, split, AsyncBufReadExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
 
-use crate::structs::messages::SendToken;
+use crate::structs::messages::{Reconnect, SendToken};
 
 use super::neighbor_right::NeighborRight;
 use super::token::Token;
@@ -71,15 +71,23 @@ impl NeighborLeft {
                                                 };
                                                 if should_send_token {
                                                     thread::sleep(Duration::from_secs(3));
-                                                    match addr_clone
-                                                        .send(SendToken {
-                                                            id_actual,
-                                                            servers: 3,
-                                                        })
-                                                        .await
-                                                    {
-                                                        Ok(_) => {}
-                                                        Err(_) => {}
+                                                    match addr_clone.send(SendToken {}).await {
+                                                        Ok(res) => match res {
+                                                            Ok(()) => {
+                                                                debug!("ENTRA AL OK");
+                                                            }
+                                                            Err(_) => {
+                                                                error!("RECONECTANDO...");
+                                                                addr_clone
+                                                                    .send(Reconnect {
+                                                                        id_actual,
+                                                                        servers: 3,
+                                                                    })
+                                                                    .await
+                                                                    .expect("No pude reeconectarme")
+                                                            }
+                                                        },
+                                                        Err(_) => error!("FALLA EL ACTOR"),
                                                     };
                                                 }
                                             } else {
@@ -87,7 +95,7 @@ impl NeighborLeft {
                                             }
                                         }
                                     }
-                                    Err(_) => {
+                                    Err(_e) => {
                                         error!("Error reading from TCP Stream");
                                         break;
                                     }
