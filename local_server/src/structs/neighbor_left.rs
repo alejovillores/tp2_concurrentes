@@ -32,8 +32,41 @@ impl NeighborLeft {
         };
     }
 
-    fn handle_sync(&self) {
-        todo!()
+    fn handle_sync(&self, buff: &mut BufReader<TcpStream>) {
+        loop {
+            let mut package = String::new();
+            match buff.read_to_string(&mut package) {
+                Ok(_) => {
+                    info!("Read package from TCP Stream success");
+                    let parts: Vec<&str> = package.split(',').map(|s| s.trim()).collect();
+                    if parts.len() == 2 {
+                        let customer_id = parts[0];
+                        let points = parts[1];
+                        //TODO: Message to server actor
+                    } else if parts.len() == 1{
+                        match parts[0] {
+                            "FINSYNC" => {
+                                info!("Finished syncing accounts");
+                                break;                                
+                            }, 
+                            _ => {
+                                error!("Invalid message received when syncing accounts");
+                                break;
+                            }
+                        } 
+                    }else { 
+                        error!("Error reading account info from TCP Stream");
+                        break;
+                    }
+                }, 
+                Err(_) => {
+                    error!("Error reading account info from TCP Stream");
+                    break;
+
+                }
+            }
+        }
+        
     }
 
     pub fn start(&self, token_monitor: Arc<(Mutex<Token>, Condvar)>) -> Result<(), String> {
@@ -48,11 +81,21 @@ impl NeighborLeft {
                 Ok(_) => {
                     info!("Read package from TCP Stream success");
                     let parts: Vec<&str> = package.split(',').map(|s| s.trim()).collect();
-                    if parts.len() == TOKEN {
-                        info!("Token received");
-                        self.handle_token(token_monitor);
+                    if parts.len() == 1 {
+                        let msg = parts[0];
+                        match msg {
+                            "TOKEN" => {
+                                info!("Token received");
+                                self.handle_token(token_monitor);
+                            }, 
+                            "SYNC" => {
+                                info!("Sync accounts message received");
+                                self.handle_sync(&mut buff);
+                            }, 
+                            _ => error!("Invalid message received")
+                        }
                     } else {
-                        //self.handle_sync()
+                        error!("Invalid message received")
                     }
                 }
                 Err(_) => {
