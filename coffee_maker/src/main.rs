@@ -154,7 +154,7 @@ async fn main() {
                 next_order.operation, next_order.account_id, next_order.coffee_points
             );
             match send(&mut stream, response_message.clone()) {
-                Ok(_) => info!("Send {:?} message to Server",response_message),
+                Ok(_) => info!("Send {:?} message to Server", response_message),
                 Err(e) => error!("{}", e),
             }
 

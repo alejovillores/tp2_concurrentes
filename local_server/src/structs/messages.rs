@@ -47,3 +47,9 @@ pub struct SyncAccount {
 #[derive(Message, Debug)]
 #[rtype(result = "String")]
 pub struct SendToken {}
+
+#[derive(Message, Debug)]
+#[rtype(result = "String")]
+pub struct SendSync {
+    pub accounts: Vec<Account>,
+}
