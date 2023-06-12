@@ -1,6 +1,8 @@
 use actix::{Actor, Addr, MailboxError};
+use local_server::structs::neighbor_left::NeighborLeft;
 use local_server::structs::token::Token;
 use log::{error, info};
+use tokio::join;
 use std::sync::{Arc, Condvar, Mutex};
 
 use local_server::structs::messages::UnblockPoints;
@@ -10,6 +12,7 @@ use local_server::{
 };
 use tokio::io::{self, split, AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
+
 
 #[actix_rt::main]
 async fn main() {
@@ -23,7 +26,24 @@ async fn main() {
         .await
         .expect("Failed to bind address");
 
-    info!("Waiting for connections!");
+
+    // TODO: Separar en 1 funcion por thread
+    // TODO: 1 funcion listener de la cafetera
+    // TODO: 1 funcion listener del vecino izquierdo
+
+    let token_monitor_clone = token_monitor.clone();
+    let _ = tokio::spawn(async move {
+        let listener = TcpListener::bind("127.0.0.1:5001")
+            .await
+            .expect("Failed to bind left neighbor address");
+
+        info!("Left Neighbor listening on 127.0.0.1:5001");
+        
+        let left_neighbor = NeighborLeft::new(listener);
+        left_neighbor.start(token_monitor_clone).await
+    });
+
+    info!("Waiting for connections from coffee makers!");
     loop {
         let token_monitor_clone = token_monitor.clone();
         info!("New TCP stream !");
@@ -37,9 +57,11 @@ async fn main() {
             }
             Err(e) => {
                 error!("Error accepting connection: {}", e);
+                break;
             }
         }
     }
+
 }
 
 async fn handle_client(
@@ -136,6 +158,7 @@ async fn handle_client(
                     handle_result(&mut w, result).await;
                 } else {
                     w.write_all(b"ERR: Invalid format\n").await.expect("error");
+                    break;
                 }
             }
             Err(e) => {
