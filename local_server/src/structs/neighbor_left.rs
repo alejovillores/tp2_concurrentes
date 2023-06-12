@@ -23,20 +23,22 @@ impl NeighborLeft {
     }
 
     pub async fn start(&self, token_monitor: Arc<(Mutex<Token>, Condvar)>) -> Result<(), String> {
-        env_logger::init();
         let token_monitor_clone = token_monitor.clone();
+
         if let Some(listener) = &self.connection {
             match listener.accept().await {
                 Ok((stream, _)) => {
                     tokio::spawn(async move {
                         info!("Handling new left Neighbor !");
-                        let (r, w): (io::ReadHalf<TcpStream>, io::WriteHalf<TcpStream>) =
+                        let (r, _w): (io::ReadHalf<TcpStream>, io::WriteHalf<TcpStream>) =
                             split(stream);
                         let mut reader = BufReader::new(r);
+
                         loop {
                             let mut line = String::new();
                             match reader.read_line(&mut line).await {
-                                Ok(_) => {
+
+                                Ok(s) => {
                                     info!("Read package from TCP Stream success");
                                     let parts: Vec<&str> =
                                         line.split(',').map(|s| s.trim()).collect();

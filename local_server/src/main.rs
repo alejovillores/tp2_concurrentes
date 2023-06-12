@@ -1,27 +1,40 @@
 use actix::{Actor, Addr, MailboxError};
+use local_server::structs::connection::Connection;
 use local_server::structs::neighbor_left::NeighborLeft;
+use local_server::structs::neighbor_right::NeighborRight;
 use local_server::structs::token::Token;
-use log::{error, info};
+use log::{error, info, debug};
 use std::sync::{Arc, Condvar, Mutex};
-use tokio::join;
+use std::time::Duration;
 
-use local_server::structs::messages::UnblockPoints;
+use local_server::structs::messages::{UnblockPoints, SendToken};
 use local_server::{
     local_server::LocalServer,
     structs::messages::{AddPoints, BlockPoints, SubtractPoints},
 };
 use tokio::io::{self, split, AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
+use std::{env, net, thread};
 
 #[actix_rt::main]
 async fn main() {
     env_logger::init();
 
+    let args: Vec<String> = env::args().collect();
+    let id :u8 = args[1].parse::<u8>().expect("Could not parse number");
+
+
+    debug!("SERVER INFO id: {}, ", id);
+    debug!("SERVER INFO LEFT NEIGHBOR PORT: 500{}, ", id);
+    debug!("SERVER INFO COFFEE MAKER PORT: 808{}, ", id);
+
+    thread::sleep(Duration::from_secs(10));
+    
     let server_address = LocalServer::new().unwrap().start();
     let token_monitor: Arc<(Mutex<Token>, Condvar)> =
         Arc::new((Mutex::new(Token::new()), Condvar::new()));
 
-    let listener = TcpListener::bind("127.0.0.1:8081")
+    let listener = TcpListener::bind(format!("127.0.0.1:808{}",id))
         .await
         .expect("Failed to bind address");
 
@@ -30,26 +43,44 @@ async fn main() {
     // TODO: 1 funcion listener del vecino izquierdo
 
     let token_monitor_clone = token_monitor.clone();
-    let _ = tokio::spawn(async move {
-        let listener = TcpListener::bind("127.0.0.1:5001")
+    let _left_neighbor = tokio::spawn(async move {
+        let listener = TcpListener::bind(format!("127.0.0.1:500{}",id))
             .await
             .expect("Failed to bind left neighbor address");
 
-        info!("Left Neighbor listening on 127.0.0.1:5001");
+        info!("LEFT NEIGHBOR - listening on 127.0.0.1:5001");
 
         let left_neighbor = NeighborLeft::new(listener);
         left_neighbor.start(token_monitor_clone).await
     });
 
-    info!("Waiting for connections from coffee makers!");
+
+    if id != 2 {
+        if let Ok(s) = net::TcpStream::connect(format!("127.0.0.1:500{}",(id+1))) {
+            info!("RIGHT NEIGHBOR - is active");
+            let righ_neighbor = NeighborRight::new(Connection::new(Some(s))).start();
+        }
+        else {
+            error!("RIGHT NEIGHBOR - cannot connect")
+        }
+    }
+    else {
+        if let Ok(s) = net::TcpStream::connect(format!("127.0.0.1:500{}",(id-1))) {
+            info!("RIGHT NEIGHBOR - is active");
+            let righ_neighbor = NeighborRight::new(Connection::new(Some(s))).start();
+        }
+        else {
+            error!("RIGHT NEIGHBOR - cannot connect")
+        }
+    }
+
+    info!("LOCAL SERVER - Waiting for connections from coffee makers!");
     loop {
         let token_monitor_clone = token_monitor.clone();
-        info!("New TCP stream !");
         match listener.accept().await {
             Ok((stream, _)) => {
                 let server_addr_clone = server_address.clone();
                 tokio::spawn(async move {
-                    info!("Handling stream !");
                     handle_client(stream, server_addr_clone, token_monitor_clone).await
                 });
             }
@@ -82,6 +113,7 @@ async fn handle_client(
 
                     let result = match method {
                         "REQ" => {
+                            info!("LOCAL SERVER - REQ requests");
                             let msg = BlockPoints {
                                 customer_id,
                                 points,
@@ -91,6 +123,7 @@ async fn handle_client(
                             server_address.send(msg).await
                         }
                         _ => {
+                            error!("LOCAL SERVER - ERR: Invalid method");
                             w.write_all(b"ERR: Invalid method\n").await.unwrap();
                             Err(actix::MailboxError::Closed)
                         }
@@ -215,6 +248,8 @@ async fn handle_result(w: &mut io::WriteHalf<TcpStream>, result: Result<String, 
             w.write_all(format!("{}\n", res).as_bytes())
                 .await
                 .expect("error");
+            info!("LOCAL SERVER - send response");
+
         }
         Err(_) => {
             w.write_all(b"ERR: Internal server error\n")
