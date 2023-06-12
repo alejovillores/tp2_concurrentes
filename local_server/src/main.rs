@@ -38,11 +38,8 @@ async fn main() {
         .await
         .expect("Failed to bind address");
 
-    // TODO: Separar en 1 funcion por thread
-    // TODO: 1 funcion listener de la cafetera
-    // TODO: 1 funcion listener del vecino izquierdo
-
     let token_monitor_clone = token_monitor.clone();
+    
     let _left_neighbor = tokio::spawn(async move {
         let listener = TcpListener::bind(format!("127.0.0.1:500{}",id))
             .await
@@ -54,33 +51,33 @@ async fn main() {
         left_neighbor.start(token_monitor_clone).await.expect("Error starting left neighbor")
     });
 
-    let _ = tokio::spawn(async move {        
-        if id == 2 {
-            let mut attemps = 0;
-            let mut stream: Option<net::TcpStream> = None;
-
-            while attemps < 5 {
-                match net::TcpStream::connect(format!("127.0.0.1:5001")){
-                    Ok(s) => {
-                        stream = Some(s);
-                    },
-                    Err(e) => {
-                        error!("{}",e);
-                        warn!("RIGHT NEIGHBOR - could not connect ");
-                        attemps += 1;
-                        thread::sleep(Duration::from_secs(5))
-                    },
-                }    
-            }
-            if attemps == 5 {
-                warn!("RIGHT NEIGHBOR - could not connect in 5 attemps ");
-            }
-            else{
-                info!("RIGHT NEIGHBOR - is active");
-                let righ_neighbor = NeighborRight::new(Connection::new(stream)).start();
-            }
+           
+    if id == 2 {
+        let mut attemps = 0;
+        let mut stream: Option<net::TcpStream> = None;
+        while attemps < 5 {
+            match net::TcpStream::connect(format!("127.0.0.1:5001")){
+                Ok(s) => {
+                    stream = Some(s);
+                    break;
+                },
+                Err(e) => {
+                    error!("{}",e);
+                    warn!("RIGHT NEIGHBOR - could not connect ");
+                    attemps += 1;
+                    thread::sleep(Duration::from_secs(5))
+                },
+            }    
         }
-    });
+        if attemps == 5 {
+            warn!("RIGHT NEIGHBOR - could not connect in 5 attemps ");
+        }
+        else{
+            info!("RIGHT NEIGHBOR - is active");
+            let righ_neighbor = NeighborRight::new(Connection::new(stream)).start();
+        }
+    }
+    
     
     info!("LOCAL SERVER - Waiting for connections from coffee makers!");
     loop {
