@@ -59,7 +59,7 @@ async fn main() {
     let addr = coffee_maker_actor.start();
     info!("CoffeeMaker actor is active");
 
-    if let Ok(mut stream) = TcpStream::connect("127.0.0.1:8888") {
+    if let Ok(mut stream) = TcpStream::connect("127.0.0.1:8081") {
         info!("Connected to the server!");
         loop {
             let mut next_order;
@@ -101,7 +101,7 @@ async fn main() {
             } else {
                 // 1. Ask for points
                 let request_message = format!(
-                    "REQ, account_id: {}, coffee_points: {} \n",
+                    "REQ, {}, {} \n",
                     next_order.account_id, next_order.coffee_points
                 );
                 match send(&mut stream, request_message) {
@@ -150,11 +150,11 @@ async fn main() {
 
             // 3. Send results
             let response_message = format!(
-                "RES, {}, account_id: {}, coffee_points: {} \n",
+                "RES, {}, {}, {} \n",
                 next_order.operation, next_order.account_id, next_order.coffee_points
             );
-            match send(&mut stream, response_message) {
-                Ok(_) => info!("Send RES message to Server"),
+            match send(&mut stream, response_message.clone()) {
+                Ok(_) => info!("Send {:?} message to Server", response_message),
                 Err(e) => error!("{}", e),
             }
 

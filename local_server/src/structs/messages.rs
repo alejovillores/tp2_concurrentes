@@ -1,4 +1,7 @@
-use std::sync::{Arc, Condvar, Mutex};
+use std::{
+    net::TcpStream,
+    sync::{Arc, Condvar, Mutex},
+};
 
 use actix::Message;
 
@@ -45,5 +48,24 @@ pub struct SyncAccount {
 }
 
 #[derive(Message, Debug)]
-#[rtype(result = "String")]
+#[rtype(result = "Result<(),String>")]
 pub struct SendToken {}
+
+#[derive(Message, Debug)]
+#[rtype(result = "String")]
+pub struct SendSync {
+    pub accounts: Vec<Account>,
+}
+
+#[derive(Message, Debug)]
+#[rtype(result = "()")]
+pub struct ConfigStream {
+    pub stream: TcpStream,
+}
+
+#[derive(Message, Debug)]
+#[rtype(result = "()")]
+pub struct Reconnect {
+    pub id_actual: u8,
+    pub servers: u8,
+}
