@@ -14,6 +14,7 @@ impl Connection {
     pub fn write(&mut self, buf: &[u8]) -> Result<(), String> {
         if let Some(stream) = self.stream.as_mut() {
             stream.write(buf).expect("Error writting tcp stream");
+            return Ok(());
         }
         Err(String::from("Error no tcp stream"))
     }

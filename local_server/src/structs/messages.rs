@@ -1,4 +1,4 @@
-use std::sync::{Arc, Condvar, Mutex};
+use std::{sync::{Arc, Condvar, Mutex}, net::TcpStream};
 
 use actix::Message;
 
@@ -53,3 +53,10 @@ pub struct SendToken {}
 pub struct SendSync {
     pub accounts: Vec<Account>,
 }
+
+#[derive(Message, Debug)]
+#[rtype(result = "()")]
+pub struct ConfigStream {
+    pub stream: TcpStream,
+}
+

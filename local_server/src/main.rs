@@ -7,7 +7,7 @@ use log::{error, info, debug, warn};
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 
-use local_server::structs::messages::{UnblockPoints, SendToken};
+use local_server::structs::messages::{UnblockPoints, SendToken, ConfigStream};
 use local_server::{
     local_server::LocalServer,
     structs::messages::{AddPoints, BlockPoints, SubtractPoints},
@@ -15,6 +15,8 @@ use local_server::{
 use tokio::io::{self, split, AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
 use std::{env, net, thread};
+
+
 
 #[actix_rt::main]
 async fn main() {
@@ -30,6 +32,7 @@ async fn main() {
 
     thread::sleep(Duration::from_secs(5));
     
+    let mut stream: Option<net::TcpStream> = None;
     let server_address = LocalServer::new().unwrap().start();
     let token_monitor: Arc<(Mutex<Token>, Condvar)> =
         Arc::new((Mutex::new(Token::new()), Condvar::new()));
@@ -38,27 +41,25 @@ async fn main() {
         .await
         .expect("Failed to bind address");
 
-    let token_monitor_clone = token_monitor.clone();
+    let left_neighbor_listener = TcpListener::bind(format!("127.0.0.1:500{}",id))
+    .await
+    .expect("Failed to bind left neighbor address");
+    let righ_neighbor: Addr<NeighborRight> = NeighborRight::new(Connection::new(stream)).start();
+    let righ_neighbor_clone = righ_neighbor.clone();
     
+    let token_monitor_clone = token_monitor.clone();
     let _left_neighbor = tokio::spawn(async move {
-        let listener = TcpListener::bind(format!("127.0.0.1:500{}",id))
-            .await
-            .expect("Failed to bind left neighbor address");
-
         info!("LEFT NEIGHBOR - listening on 127.0.0.1:500{}",id);
-
-        let left_neighbor = NeighborLeft::new(listener);
-        left_neighbor.start(token_monitor_clone).await.expect("Error starting left neighbor")
+        let left_neighbor = NeighborLeft::new(left_neighbor_listener);
+        left_neighbor.start(token_monitor_clone,righ_neighbor_clone).await.expect("Error starting left neighbor")
     });
 
-           
     if id == 2 {
         let mut attemps = 0;
-        let mut stream: Option<net::TcpStream> = None;
         while attemps < 5 {
             match net::TcpStream::connect(format!("127.0.0.1:5001")){
                 Ok(s) => {
-                    stream = Some(s);
+                    righ_neighbor.send(ConfigStream{stream: s}).await.expect("No pudo enviar al actor");
                     break;
                 },
                 Err(e) => {
@@ -74,10 +75,35 @@ async fn main() {
         }
         else{
             info!("RIGHT NEIGHBOR - is active");
-            let righ_neighbor = NeighborRight::new(Connection::new(stream)).start();
+            let res = righ_neighbor.send(SendToken{}).await.expect("No pudo enviar al actor");
+            debug!("response: {}", res);
+
         }
     }
-    
+
+    if id == 1 {
+        let mut attemps = 0;
+        while attemps < 5 {
+            match net::TcpStream::connect(format!("127.0.0.1:5002")){
+                Ok(s) => {
+                    righ_neighbor.send(ConfigStream{stream: s}).await.expect("No pudo enviar al actor");
+                    break;
+                },
+                Err(e) => {
+                    error!("{}",e);
+                    warn!("RIGHT NEIGHBOR - could not connect ");
+                    attemps += 1;
+                    thread::sleep(Duration::from_secs(5))
+                },
+            }    
+        }
+        if attemps == 5 {
+            warn!("RIGHT NEIGHBOR - could not connect in 5 attemps ");
+        }
+        else{
+            info!("RIGHT NEIGHBOR - is active");
+        }
+    }
     
     info!("LOCAL SERVER - Waiting for connections from coffee makers!");
     loop {

@@ -7,10 +7,10 @@ use std::io::{BufReader, Read, Write};
 #[double]
 use super::connection::Connection;
 
-use super::messages::SendToken;
+use super::messages::{SendToken, ConfigStream};
 
 pub struct NeighborRight {
-    connection: Connection,
+    pub connection: Connection,
 }
 
 impl NeighborRight {
@@ -25,29 +25,32 @@ impl Actor for NeighborRight {
 
 impl Handler<SendToken> for NeighborRight {
     type Result = String;
-
     fn handle(&mut self, _msg: SendToken, _ctx: &mut Context<Self>) -> Self::Result {
-        env_logger::init();
-
-        let message = "TOKEN \n".as_bytes();
+        let message = "TOKEN\n".as_bytes();
         match self.connection.write(message) {
             Ok(_) => {
                 info!("Sent token to next server");
                 return String::from("OK");
             }
-            Err(_) => {
-                error!("Failed writting to next server");
-                return String::from("FAIL");
+            Err(e) => {
+                error!("{}",e);
+                return e;
             }
         }
     }
 }
 
+impl Handler<ConfigStream> for NeighborRight {
+    type Result = ();
+    fn handle(&mut self, msg: ConfigStream, _ctx: &mut Context<Self>) -> Self::Result {
+        self.connection = Connection::new(Some(msg.stream));
+
+    }
+}
+
 impl Handler<SendSync> for NeighborRight {
     type Result = String;
-
     fn handle(&mut self, msg: SendSync, _ctx: &mut Context<Self>) -> Self::Result {
-        env_logger::init();
         let accounts = msg.accounts;
         let message = "SYNC\n".as_bytes();
         
@@ -75,8 +78,9 @@ impl Handler<SendSync> for NeighborRight {
         if error_occurred {
             return String::from("FAIL");
         }
+
         let fin_message = "FINSYNC\n".as_bytes();
-        match self.connection.write(message) {
+        match self.connection.write(fin_message) {
             Ok(_) => info!("Ended sync with right neighbor"),
             Err(err) => {
                 error!("Sync with right neighbor failed: {}", err);

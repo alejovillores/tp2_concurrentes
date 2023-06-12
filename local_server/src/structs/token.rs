@@ -1,12 +1,15 @@
 #[derive(Debug)]
 pub struct Token {
     status: bool,
+    cont: u32,
 }
 
 impl Token {
     pub fn new() -> Self {
         let status: bool = false;
-        Self { status }
+        let cont = 0;
+
+        Self { status, cont }
     }
 
     pub fn is_avaliable(&self) -> bool {
@@ -19,6 +22,10 @@ impl Token {
 
     pub fn not_avaliable(&mut self) {
         self.status = false;
+    }
+
+    pub fn empty(&self)-> bool {
+        self.cont == 0
     }
 }
 
