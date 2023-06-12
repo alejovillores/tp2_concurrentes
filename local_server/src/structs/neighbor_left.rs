@@ -26,10 +26,12 @@ impl NeighborLeft {
         let token_monitor_clone = token_monitor.clone();
 
         if let Some(listener) = &self.connection {
+
             match listener.accept().await {
-                Ok((stream, _)) => {
+                Ok((stream, addr)) => {
+
                     tokio::spawn(async move {
-                        info!("Handling new left Neighbor !");
+                        info!("LEFT NEIGHBOR - New connection from {}", addr);
                         let (r, _w): (io::ReadHalf<TcpStream>, io::WriteHalf<TcpStream>) =
                             split(stream);
                         let mut reader = BufReader::new(r);
@@ -39,21 +41,23 @@ impl NeighborLeft {
                             match reader.read_line(&mut line).await {
 
                                 Ok(s) => {
-                                    info!("Read package from TCP Stream success");
-                                    let parts: Vec<&str> =
-                                        line.split(',').map(|s| s.trim()).collect();
-
-                                    if parts[0] == "TOKEN" {
-                                        info!("Token received");
-                                        let (token_lock, cvar) = &*token_monitor_clone;
-
-                                        if let Ok(mut token) = token_lock.lock() {
-                                            token.avaliable();
-                                            info!("Token is avaliable for using");
-                                            cvar.notify_all();
-                                        };
-                                    } else {
-                                        //self.handle_sync()
+                                    if s > 0 {
+                                        info!("Read package from TCP Stream success");
+                                        let parts: Vec<&str> =
+                                            line.split(',').map(|s| s.trim()).collect();
+    
+                                        if parts[0] == "TOKEN" {
+                                            info!("Token received");
+                                            let (token_lock, cvar) = &*token_monitor_clone;
+    
+                                            if let Ok(mut token) = token_lock.lock() {
+                                                token.avaliable();
+                                                info!("Token is avaliable for using");
+                                                cvar.notify_all();
+                                            };
+                                        } else {
+                                            //self.handle_sync()
+                                        }
                                     }
                                 }
                                 Err(_) => {

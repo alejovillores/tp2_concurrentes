@@ -3,7 +3,7 @@ use local_server::structs::connection::Connection;
 use local_server::structs::neighbor_left::NeighborLeft;
 use local_server::structs::neighbor_right::NeighborRight;
 use local_server::structs::token::Token;
-use log::{error, info, debug};
+use log::{error, info, debug, warn};
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 
@@ -28,7 +28,7 @@ async fn main() {
     debug!("SERVER INFO LEFT NEIGHBOR PORT: 500{}, ", id);
     debug!("SERVER INFO COFFEE MAKER PORT: 808{}, ", id);
 
-    thread::sleep(Duration::from_secs(10));
+    thread::sleep(Duration::from_secs(5));
     
     let server_address = LocalServer::new().unwrap().start();
     let token_monitor: Arc<(Mutex<Token>, Condvar)> =
@@ -48,32 +48,40 @@ async fn main() {
             .await
             .expect("Failed to bind left neighbor address");
 
-        info!("LEFT NEIGHBOR - listening on 127.0.0.1:5001");
+        info!("LEFT NEIGHBOR - listening on 127.0.0.1:500{}",id);
 
         let left_neighbor = NeighborLeft::new(listener);
-        left_neighbor.start(token_monitor_clone).await
+        left_neighbor.start(token_monitor_clone).await.expect("Error starting left neighbor")
     });
 
+    let _ = tokio::spawn(async move {        
+        if id == 2 {
+            let mut attemps = 0;
+            let mut stream: Option<net::TcpStream> = None;
 
-    if id != 2 {
-        if let Ok(s) = net::TcpStream::connect(format!("127.0.0.1:500{}",(id+1))) {
-            info!("RIGHT NEIGHBOR - is active");
-            let righ_neighbor = NeighborRight::new(Connection::new(Some(s))).start();
+            while attemps < 5 {
+                match net::TcpStream::connect(format!("127.0.0.1:5001")){
+                    Ok(s) => {
+                        stream = Some(s);
+                    },
+                    Err(e) => {
+                        error!("{}",e);
+                        warn!("RIGHT NEIGHBOR - could not connect ");
+                        attemps += 1;
+                        thread::sleep(Duration::from_secs(5))
+                    },
+                }    
+            }
+            if attemps == 5 {
+                warn!("RIGHT NEIGHBOR - could not connect in 5 attemps ");
+            }
+            else{
+                info!("RIGHT NEIGHBOR - is active");
+                let righ_neighbor = NeighborRight::new(Connection::new(stream)).start();
+            }
         }
-        else {
-            error!("RIGHT NEIGHBOR - cannot connect")
-        }
-    }
-    else {
-        if let Ok(s) = net::TcpStream::connect(format!("127.0.0.1:500{}",(id-1))) {
-            info!("RIGHT NEIGHBOR - is active");
-            let righ_neighbor = NeighborRight::new(Connection::new(Some(s))).start();
-        }
-        else {
-            error!("RIGHT NEIGHBOR - cannot connect")
-        }
-    }
-
+    });
+    
     info!("LOCAL SERVER - Waiting for connections from coffee makers!");
     loop {
         let token_monitor_clone = token_monitor.clone();

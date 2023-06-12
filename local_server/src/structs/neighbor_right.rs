@@ -50,6 +50,7 @@ impl Handler<SendSync> for NeighborRight {
         env_logger::init();
         let accounts = msg.accounts;
         let message = "SYNC\n".as_bytes();
+        
         match self.connection.write(message) {
             Ok(_) => info!("Started sync with right neighbor"),
             Err(err) => {
