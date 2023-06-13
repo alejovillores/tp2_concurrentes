@@ -5,7 +5,7 @@
         "operation": "ADD"
     },
     {
-        "account_id": 6,
+        "account_id": 1,
         "coffee_points": 9,
         "operation": "SUBS"
     }

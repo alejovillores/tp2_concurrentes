@@ -1,7 +1,10 @@
-use log::{error, info, warn};
+use log::{debug, error, info, warn};
+use std::time::Duration;
 use std::{
+    env,
     io::{BufRead, BufReader, Write},
     net::TcpStream,
+    thread,
 };
 
 use actix::Actor;
@@ -15,7 +18,7 @@ use coffee_maker::{
 };
 
 // From console next
-const PROBABLITY: f64 = 0.8;
+const PROBABLITY: f64 = 1.0;
 
 fn send(stream: &mut TcpStream, message: String) -> Result<(), String> {
     match stream.write(message.as_bytes()) {
@@ -50,8 +53,14 @@ fn read(stream: &mut TcpStream) -> Result<String, String> {
 async fn main() {
     env_logger::init();
 
+    let args: Vec<String> = env::args().collect();
+    let id: u8 = args[1].parse::<u8>().expect("Could not parse number");
+
+    debug!("WILL CONNECT TO SERVER id: {}, ", id);
+
     let probablity_calculator = ProbabilityCalculator::new();
-    let order_parser = OrderParser::new(String::from("coffee_maker/resources/test/one_order.json"));
+    let order_parser =
+        OrderParser::new(String::from("coffee_maker/resources/test/two_orders.json"));
 
     //FIXME: Correct unwrap
     let coffee_maker_actor =
@@ -59,10 +68,11 @@ async fn main() {
     let addr = coffee_maker_actor.start();
     info!("CoffeeMaker actor is active");
 
-    if let Ok(mut stream) = TcpStream::connect("127.0.0.1:8888") {
+    if let Ok(mut stream) = TcpStream::connect(format!("127.0.0.1:808{}", id)) {
         info!("Connected to the server!");
         loop {
             let mut next_order;
+            thread::sleep(Duration::from_secs(10));
 
             let take_order_result = addr.send(TakeOrder {}).await;
             match take_order_result {
@@ -94,14 +104,34 @@ async fn main() {
                     })
                     .await
                     .unwrap()
-                    == false
                 {
-                    next_order.operation = "UNBL".to_string();
+                    let response_message = format!(
+                        "RES, {}, {}, {} \n",
+                        next_order.operation, next_order.account_id, next_order.coffee_points
+                    );
+                    match send(&mut stream, response_message.clone()) {
+                        Ok(_) => info!("Send {:?} message to Server", response_message),
+                        Err(e) => error!("{}", e),
+                    }
+
+                    // 4.  Waits for ACK
+                    info!("Wait for ACK response from server");
+                    match read(&mut stream) {
+                        Ok(response) => {
+                            info!("Read response from server after writing");
+                            if response == "ACK" {
+                                info!("ACK from server");
+                            } else {
+                                error!("Not ACK from server")
+                            }
+                        }
+                        Err(e) => error!("{}", e),
+                    }
                 }
             } else {
                 // 1. Ask for points
                 let request_message = format!(
-                    "REQ, account_id: {}, coffee_points: {} \n",
+                    "REQ, {}, {} \n",
                     next_order.account_id, next_order.coffee_points
                 );
                 match send(&mut stream, request_message) {
@@ -118,13 +148,12 @@ async fn main() {
                             info!("OK from server");
                             match next_order.operation.as_str() {
                                 "SUBS" => {
-                                    if addr
+                                    if !addr
                                         .send(PointsConsumingOrder {
                                             coffe_points: next_order.coffee_points,
                                         })
                                         .await
                                         .unwrap()
-                                        == false
                                     {
                                         next_order.operation = "UNBL".to_string();
                                     }
@@ -146,30 +175,29 @@ async fn main() {
                         next_order.operation = "UNBL".to_string();
                     }
                 }
-            }
-
-            // 3. Send results
-            let response_message = format!(
-                "RES, {}, account_id: {}, coffee_points: {} \n",
-                next_order.operation, next_order.account_id, next_order.coffee_points
-            );
-            match send(&mut stream, response_message) {
-                Ok(_) => info!("Send RES message to Server"),
-                Err(e) => error!("{}", e),
-            }
-
-            // 4.  Waits for ACK
-            info!("Wait for ACK response from server");
-            match read(&mut stream) {
-                Ok(response) => {
-                    info!("Read response from server after writing");
-                    if response == "ACK" {
-                        info!("ACK from server");
-                    } else {
-                        error!("Not ACK from server")
-                    }
+                // 3. Send results
+                let response_message = format!(
+                    "RES, {}, {}, {} \n",
+                    next_order.operation, next_order.account_id, next_order.coffee_points
+                );
+                match send(&mut stream, response_message.clone()) {
+                    Ok(_) => info!("Send {:?} message to Server", response_message),
+                    Err(e) => error!("{}", e),
                 }
-                Err(e) => error!("{}", e),
+
+                // 4.  Waits for ACK
+                info!("Wait for ACK response from server");
+                match read(&mut stream) {
+                    Ok(response) => {
+                        info!("Read response from server after writing");
+                        if response == "ACK" {
+                            info!("ACK from server");
+                        } else {
+                            error!("Not ACK from server")
+                        }
+                    }
+                    Err(e) => error!("{}", e),
+                }
             }
         }
     } else {

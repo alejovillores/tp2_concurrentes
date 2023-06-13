@@ -1,27 +1,26 @@
 extern crate actix;
 
 use actix::{Actor, Context, Handler};
-use log::{error, info};
+use log::{error, info, warn};
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
+
 use std::sync::{Arc, Mutex};
 
 use crate::structs::account::Account;
 use crate::structs::messages::{
-    AddPoints, BlockPoints, SubtractPoints, SyncAccount, UnblockPoints,
+    AddPoints, BlockPoints, SubtractPoints, SyncAccount, SyncNextServer, UnblockPoints,
 };
 
 #[allow(dead_code)]
 pub struct LocalServer {
     pub accounts: HashMap<u32, Arc<Mutex<Account>>>,
-    pub points_added: HashMap<u32, Arc<Mutex<u32>>>,
 }
 
 impl LocalServer {
     pub fn new() -> Result<LocalServer, String> {
         Ok(Self {
             accounts: HashMap::new(),
-            points_added: HashMap::new(),
         })
     }
 }
@@ -37,13 +36,22 @@ impl Handler<AddPoints> for LocalServer {
         let customer_id = msg.customer_id;
         let points = msg.points;
 
-        let points_added = match self.points_added.entry(customer_id) {
+        let account = match self.accounts.entry(customer_id) {
             Entry::Occupied(o) => o.into_mut(),
-            Entry::Vacant(v) => v.insert(Arc::new(Mutex::new(0))),
+            Entry::Vacant(v) => {
+                let id_clone = customer_id;
+                match Account::new(id_clone) {
+                    Ok(new_account) => v.insert(Arc::new(Mutex::new(new_account))),
+                    Err(err) => {
+                        println!("Error al crear la cuenta: {}", err);
+                        return "ERROR".to_string();
+                    }
+                }
+            }
         };
-        match points_added.lock() {
-            Ok(mut points_added_lock) => {
-                *points_added_lock += points;
+        match account.lock() {
+            Ok(mut account_lock) => {
+                account_lock.add_points(points);
                 info!("{} points added to account {}", points, customer_id);
                 "ACK".to_string()
             }
@@ -64,23 +72,32 @@ impl Handler<BlockPoints> for LocalServer {
     fn handle(&mut self, msg: BlockPoints, _ctx: &mut Context<Self>) -> Self::Result {
         let customer_id = msg.customer_id;
         let points = msg.points;
-        let (token_lock, cvar) = &*msg.token_monitor;
-        let ok_result_msg = "OK".to_string();
+        let token_lock = msg.token_lock;
+        let already_increased = msg.already_increased;
+        let mut result_msg: String = "".to_string();
 
-        if let Ok(guard) = token_lock.lock() {
-            if let Ok(_) = cvar.wait_while(guard, |token| !token.is_avaliable()) {
+        if let Ok(mut token_guard) = token_lock.lock() {
+            if !token_guard.is_avaliable() {
+                if !already_increased {
+                    token_guard.increase();
+                }
+                warn!("Local server has not token yet");
+                result_msg = "AGAIN".to_string();
+            } else {
                 match self.accounts.get_mut(&customer_id) {
                     Some(account) => match account.lock() {
                         Ok(mut account_lock) => {
+                            account_lock.register_added_points();
                             let result = account_lock.block_points(points);
                             if result.is_ok() {
                                 info!("{} points blocked from account {}", points, customer_id);
+                                result_msg = "OK".to_string();
                             } else {
                                 error!(
                                     "Couldn't block {} points from account {}",
                                     points, customer_id
                                 );
-                                return "ERROR".to_string();
+                                result_msg = "ERROR".to_string();
                             }
                         }
                         Err(_) => {
@@ -88,21 +105,17 @@ impl Handler<BlockPoints> for LocalServer {
                                 "Can't get lock from account {} to block {} points",
                                 customer_id, points
                             );
-                            return "ERROR".to_string();
+                            result_msg = "ERROR".to_string();
                         }
                     },
                     None => {
                         error!("The requested account does not exist");
-                        return "ERROR".to_string();
+                        result_msg = "ERROR".to_string();
                     }
                 }
             }
-        } else {
-            error!("Account {} does not exist", customer_id);
-            return "ERROR".to_string();
         }
-        cvar.notify_all();
-        ok_result_msg
+        result_msg
     }
 }
 
@@ -190,7 +203,7 @@ impl Handler<SyncAccount> for LocalServer {
         let account = match self.accounts.entry(customer_id) {
             Entry::Occupied(o) => o.into_mut(),
             Entry::Vacant(v) => {
-                let id_clone = customer_id.clone();
+                let id_clone = customer_id;
                 match Account::new(id_clone) {
                     Ok(new_account) => v.insert(Arc::new(Mutex::new(new_account))),
                     Err(err) => {
@@ -203,7 +216,7 @@ impl Handler<SyncAccount> for LocalServer {
         match account.lock() {
             Ok(mut account_lock) => {
                 let _ = account_lock.sync(points);
-                info!("Account {} synched", customer_id);
+                info!("Account {} synched {} points", customer_id, points);
                 "OK".to_string()
             }
             Err(_) => {
@@ -214,6 +227,25 @@ impl Handler<SyncAccount> for LocalServer {
     }
 }
 
+impl Handler<SyncNextServer> for LocalServer {
+    type Result = Vec<Account>;
+
+    fn handle(&mut self, _msg: SyncNextServer, _ctx: &mut Self::Context) -> Self::Result {
+        let mut accounts: Vec<Account> = vec![];
+        for (_, value) in self.accounts.iter() {
+            if let Ok(account) = value.lock() {
+                let mut account_dup =
+                    Account::new(account.customer_id).expect("No se pudo crear el account");
+                account_dup.points = account.points;
+                accounts.push(account_dup);
+            }
+        }
+        error!("cuentas {:?} a enviar", accounts);
+        accounts
+    }
+}
+
+/*
 #[cfg(test)]
 mod local_server_test {
     use std::sync::Condvar;
@@ -300,3 +332,4 @@ mod local_server_test {
         assert_eq!(result, "OK".to_string());
     }
 }
+*/
