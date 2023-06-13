@@ -1,6 +1,11 @@
-use log::{error, info, warn, debug};
-use std::{env, io::{BufRead, BufReader, Write}, net::TcpStream, thread};
+use log::{debug, error, info, warn};
 use std::time::Duration;
+use std::{
+    env,
+    io::{BufRead, BufReader, Write},
+    net::TcpStream,
+    thread,
+};
 
 use actix::Actor;
 use coffee_maker::{
@@ -13,7 +18,7 @@ use coffee_maker::{
 };
 
 // From console next
-const PROBABLITY: f64 = 0.8;
+const PROBABLITY: f64 = 1.0;
 
 fn send(stream: &mut TcpStream, message: String) -> Result<(), String> {
     match stream.write(message.as_bytes()) {
@@ -54,7 +59,8 @@ async fn main() {
     debug!("WILL CONNECT TO SERVER id: {}, ", id);
 
     let probablity_calculator = ProbabilityCalculator::new();
-    let order_parser = OrderParser::new(String::from("coffee_maker/resources/test/two_orders.json"));
+    let order_parser =
+        OrderParser::new(String::from("coffee_maker/resources/test/two_orders.json"));
 
     //FIXME: Correct unwrap
     let coffee_maker_actor =
@@ -109,7 +115,7 @@ async fn main() {
                         Err(e) => error!("{}", e),
                     }
 
-                                // 4.  Waits for ACK
+                    // 4.  Waits for ACK
                     info!("Wait for ACK response from server");
                     match read(&mut stream) {
                         Ok(response) => {
@@ -195,8 +201,6 @@ async fn main() {
                     Err(e) => error!("{}", e),
                 }
             }
-
-
         }
     } else {
         error!("Couldn't connect to server...");

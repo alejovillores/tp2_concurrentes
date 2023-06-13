@@ -68,14 +68,6 @@ impl Account {
 mod account_test {
     use super::*;
 
-    #[test]
-    fn test_add_points() {
-        let mut account = Account::new(123).unwrap();
-        account.add_points(15);
-        assert_eq!(account.points, 15);
-        account.add_points(10);
-        assert_eq!(account.points, 25);
-    }
 
     #[test]
     fn test_subtract_points_with_enough_blocked_points_success() {

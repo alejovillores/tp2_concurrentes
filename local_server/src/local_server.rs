@@ -1,16 +1,16 @@
 extern crate actix;
 
 use actix::{Actor, Context, Handler};
-use log::{error, info};
+use log::{error, info, warn};
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
 use std::process;
+use std::sync::{Arc, Mutex};
 use tokio::runtime::Runtime;
 
-use crate::structs::account::{Account, self};
+use crate::structs::account::{self, Account};
 use crate::structs::messages::{
-    AddPoints, BlockPoints, SubtractPoints, SyncAccount, UnblockPoints, SyncNextServer, SendSync,
+    AddPoints, BlockPoints, SendSync, SubtractPoints, SyncAccount, SyncNextServer, UnblockPoints,
 };
 
 #[allow(dead_code)]
@@ -45,10 +45,10 @@ impl Handler<AddPoints> for LocalServer {
                     Ok(new_account) => v.insert(Arc::new(Mutex::new(new_account))),
                     Err(err) => {
                         println!("Error al crear la cuenta: {}", err);
-                        return "ERROR".to_string()
+                        return "ERROR".to_string();
                     }
                 }
-            },
+            }
         };
         match account.lock() {
             Ok(mut account_lock) => {
@@ -75,37 +75,37 @@ impl Handler<BlockPoints> for LocalServer {
         let points = msg.points;
         let token_lock = msg.token_lock;
         let already_increased = msg.already_increased;
-        let mut result_msg:String = "".to_string();
+        let mut result_msg: String = "".to_string();
 
-        error!("BLOCKING POINTS -PIDO LOCK");
         if let Ok(mut token_guard) = token_lock.lock() {
             if token_guard.is_avaliable() == false {
-                if already_increased == false{
-                    error!("BLOCKING POINTS - sumo 1");
+                if already_increased == false {
                     token_guard.increase();
                 }
+                warn!("Local server has not token yet");
                 result_msg = "AGAIN".to_string();
-            }else {
+            } else {
                 match self.accounts.get_mut(&customer_id) {
                     Some(account) => match account.lock() {
                         Ok(mut account_lock) => {
+                            account_lock.register_added_points();
                             let result = account_lock.block_points(points);
                             if result.is_ok() {
                                 info!("{} points blocked from account {}", points, customer_id);
                                 result_msg = "OK".to_string();
                             } else {
                                 error!(
-                            "Couldn't block {} points from account {}",
-                            points, customer_id
-                        );
-                            result_msg =  "ERROR".to_string();
+                                    "Couldn't block {} points from account {}",
+                                    points, customer_id
+                                );
+                                result_msg = "ERROR".to_string();
                             }
                         }
                         Err(_) => {
                             error!(
-                        "Can't get lock from account {} to block {} points",
-                        customer_id, points
-                    );
+                                "Can't get lock from account {} to block {} points",
+                                customer_id, points
+                            );
                             result_msg = "ERROR".to_string();
                         }
                     },
@@ -116,8 +116,6 @@ impl Handler<BlockPoints> for LocalServer {
                 }
             }
         }
-        error!("BLOCKING POINTS - SUELTO LOCK");
-
         result_msg
     }
 }
@@ -219,7 +217,7 @@ impl Handler<SyncAccount> for LocalServer {
         match account.lock() {
             Ok(mut account_lock) => {
                 let _ = account_lock.sync(points);
-                info!("Account {} synched", customer_id);
+                info!("Account {} synched {} points", customer_id, points);
                 "OK".to_string()
             }
             Err(_) => {
@@ -230,29 +228,25 @@ impl Handler<SyncAccount> for LocalServer {
     }
 }
 
-
 impl Handler<SyncNextServer> for LocalServer {
-    type Result = Result<(),String>;
+    type Result = Vec<Account>;
 
     fn handle(&mut self, msg: SyncNextServer, _ctx: &mut Self::Context) -> Self::Result {
-        let neighbor_right_adrr = msg.rigth_neighbor_addr;
-        let mut accounts:Vec<Account> = vec![]  ;
+        let mut accounts: Vec<Account> = vec![];
         for (_, value) in self.accounts.iter() {
             if let Ok(account) = value.lock() {
-                let mut account_dup = Account::new(account.customer_id).expect("No se pudo crear el account");
-                account_dup.points = account.points;   
-                accounts.push(account_dup);         
+                let mut account_dup =
+                    Account::new(account.customer_id).expect("No se pudo crear el account");
+                account_dup.points = account.points;
+                accounts.push(account_dup);
             }
-
         }
-
-        let _ = neighbor_right_adrr.send(SendSync { accounts });
-        return Ok(())
-    }   
-
+        error!("cuentas {:?} a enviar", accounts);
+        accounts
+    }
 }
 
-/* 
+/*
 #[cfg(test)]
 mod local_server_test {
     use std::sync::Condvar;

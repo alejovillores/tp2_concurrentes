@@ -110,7 +110,7 @@ impl Handler<SendSync> for NeighborRight {
             match self.connection.write(sync_account_message.as_bytes()) {
                 Ok(_) => {
                     info!("send: {} to next server", sync_account_message);
-                },
+                }
                 Err(err) => {
                     error!("Sync with right neighbor failed: {}", err);
                     error_occurred = true;

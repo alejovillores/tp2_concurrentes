@@ -1,11 +1,11 @@
 use actix::Addr;
 use log::{debug, error, info, warn};
+use std::process;
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
 use std::time::Duration;
 use tokio::io::{self, split, AsyncBufReadExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
-use std::process;
 use tokio::sync::broadcast::Sender;
 
 use crate::local_server::LocalServer;
@@ -53,21 +53,20 @@ impl NeighborLeft {
                                 match reader.read_line(&mut line).await {
                                     Ok(s) => {
                                         if s > 0 {
-                                            info!("LEFT NEIGHBOR - Read {} from TCP Stream success", line);
+                                            info!("Read {} from TCP Stream success", line);
                                             let parts: Vec<&str> =
                                                 line.split(',').map(|s| s.trim()).collect();
-                                            
-                                            if parts[0] == "TOKEN" {
-                                                info!("LEFT NEIGHBOR - Token received from {}", addr);
-                                                let mut should_send_token = false;
 
+                                            if parts[0] == "TOKEN" {
+                                                info!("Token received from {}", addr);
+                                                let mut should_send_token = false;
                                                 let token_clone_2 = token_clone.clone();
                                                 if let Ok(mut token_guard) = token_clone.lock() {
                                                     if token_guard.empty() {
-                                                        info!("LEFT NEIGHBOR - No blocked points, should send package");
+                                                        info!("No blocked points, should send package");
                                                         should_send_token = true;
                                                     } else {
-                                                        info!("LEFT NEIGHBOR - Token is avaliable for using");
+                                                        info!("Token is avaliable for using");
                                                         token_guard.avaliable();
                                                     }
                                                     token_sender_clone.send(token_clone_2).unwrap();
@@ -75,20 +74,23 @@ impl NeighborLeft {
                                                 if should_send_token {
                                                     thread::sleep(Duration::from_secs(5));
                                                     match addr_clone.send(SendToken {}).await {
-                                                        Ok(res) => match res {
-                                                            Ok(()) => {
+                                                        Ok(res) => {
+                                                            match res {
+                                                                Ok(()) => {
+                                                                    info!("Send token from left neighbor")
+                                                                }
+                                                                Err(_) => {
+                                                                    error!("Reconnecting ...");
+                                                                    addr_clone
+                                                                        .send(Reconnect {
+                                                                            id_actual,
+                                                                            servers: 2,
+                                                                        })
+                                                                        .await
+                                                                        .expect("Reconnecting fail")
+                                                                }
                                                             }
-                                                            Err(_) => {
-                                                                error!("Reconnecting ...");
-                                                                addr_clone
-                                                                    .send(Reconnect {
-                                                                        id_actual,
-                                                                        servers: 2,
-                                                                    })
-                                                                    .await
-                                                                    .expect("Reconnecting fail")
-                                                            }
-                                                        },
+                                                        }
                                                         Err(_) => error!("Actor"),
                                                     };
                                                 }
@@ -98,37 +100,50 @@ impl NeighborLeft {
                                                     let mut package = String::new();
                                                     match reader.read_line(&mut package).await {
                                                         Ok(_) => {
-                                                            info!("Read package from TCP Stream success");
-                                                            let parts: Vec<&str> = package.split(',').map(|s| s.trim()).collect();
+                                                            warn!("Read SYNC package from TCP Stream success");
+                                                            let parts: Vec<&str> = package
+                                                                .split(',')
+                                                                .map(|s| s.trim())
+                                                                .collect();
                                                             if parts.len() == 2 {
-                                                                let customer_id = parts[0].parse::<u32>().unwrap();
-                                                                let points = parts[1].parse::<u32>().unwrap();
-                                                                _server_actor_clone.send(SyncAccount {customer_id, points}).await.unwrap();
-                                                                info!("Send to server sync account");
-                                                            } else if parts.len() == 1{
+                                                                let customer_id = parts[0]
+                                                                    .parse::<u32>()
+                                                                    .unwrap();
+                                                                let points = parts[1]
+                                                                    .parse::<u32>()
+                                                                    .unwrap();
+                                                                _server_actor_clone
+                                                                    .send(SyncAccount {
+                                                                        customer_id,
+                                                                        points,
+                                                                    })
+                                                                    .await
+                                                                    .unwrap();
+                                                                info!(
+                                                                    "Send to server sync account"
+                                                                );
+                                                            } else if parts.len() == 1 {
                                                                 match parts[0] {
                                                                     "FINSYNC" => {
                                                                         info!("Finished syncing accounts");
                                                                         break;
-                                                                    },
+                                                                    }
                                                                     _ => {
                                                                         error!("Invalid message received when syncing accounts");
                                                                         break;
                                                                     }
                                                                 }
-                                                            }else {
+                                                            } else {
                                                                 error!("Error reading account info from TCP Stream");
                                                                 break;
                                                             }
-                                                        },
+                                                        }
                                                         Err(_) => {
                                                             error!("Error reading account info from TCP Stream");
                                                             break;
-
                                                         }
                                                     }
                                                 }
-
                                             }
                                         }
                                         line.clear();

@@ -3,9 +3,9 @@ use std::{
     sync::{Arc, Condvar, Mutex},
 };
 
-use actix::{Message, Addr};
+use actix::{Addr, Message};
 
-use super::{token::Token, neighbor_right::NeighborRight};
+use super::{neighbor_right::NeighborRight, token::Token};
 use std::collections::HashMap;
 use tokio::sync::broadcast;
 
@@ -24,7 +24,7 @@ pub struct BlockPoints {
     pub customer_id: u32,
     pub points: u32,
     pub token_lock: Arc<Mutex<Token>>,
-    pub already_increased: bool
+    pub already_increased: bool,
 }
 
 #[derive(Message, Debug)]
@@ -50,11 +50,8 @@ pub struct SyncAccount {
 }
 
 #[derive(Message, Debug)]
-#[rtype(result = "Result<(),String>")]
-pub struct SyncNextServer {
-    pub rigth_neighbor_addr: Addr<NeighborRight>
-}
-
+#[rtype(result = "Vec<Account>")]
+pub struct SyncNextServer {}
 
 #[derive(Message, Debug)]
 #[rtype(result = "Result<(),String>")]
