@@ -66,7 +66,7 @@ async fn main() {
     });
 
     //SECTION - Right Neighbor Initialization
-    match connect_right_neigbor(id, 2) {
+    match connect_right_neigbor(id, 3) {
         Ok(s) => {
             info!("Connecting Right Neighbor");
             righ_neighbor
@@ -223,7 +223,7 @@ async fn handle_client(
                                 }
                             }
                             Err(_) => {
-                                todo!()
+                                error!("An error occurred while accesing the Token");
                             }
                         }
                     }

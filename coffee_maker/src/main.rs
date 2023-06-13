@@ -64,7 +64,6 @@ async fn main() {
     let order_parser =
         OrderParser::new(String::from(orders_file));
 
-    //FIXME: Correct unwrap
     let coffee_maker_actor =
         CoffeeMaker::new(probability, probablity_calculator, order_parser).unwrap();
     let addr = coffee_maker_actor.start();
@@ -130,6 +129,7 @@ async fn main() {
                         Err(e) => error!("{}", e),
                     }
                 }
+                info!("The ADD operation could not be performed");
             } else {
                 // 1. Ask for points
                 let request_message = format!(
@@ -159,6 +159,8 @@ async fn main() {
                                     {
                                         next_order.operation = "UNBL".to_string();
                                     }
+                                    info!("The SUBS operation could not be performed");
+
                                 }
                                 _ => {
                                     error!("Invalid Order operation");
@@ -166,13 +168,11 @@ async fn main() {
                                 }
                             }
                         } else {
-                            //FIXME -
                             error!("Not OK from server");
                             next_order.operation = "UNBL".to_string();
                         }
                     }
                     Err(e) => {
-                        //FIXME
                         error!("{}", e);
                         next_order.operation = "UNBL".to_string();
                     }
