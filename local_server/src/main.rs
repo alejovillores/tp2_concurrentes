@@ -2,13 +2,13 @@ use actix::{Actor, Addr, MailboxError};
 use local_server::structs::connection::Connection;
 use local_server::structs::neighbor_left::NeighborLeft;
 use local_server::structs::neighbor_right::NeighborRight;
-use local_server::structs::token::Token;
+use local_server::structs::token::{Token, self};
 use log::{debug, error, info, warn};
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 use std::process;
 
-use local_server::structs::messages::{ConfigStream, Reconnect, SendToken, UnblockPoints};
+use local_server::structs::messages::{ConfigStream, Reconnect, SendToken, UnblockPoints, SyncNextServer};
 use local_server::{
     local_server::LocalServer,
     structs::messages::{AddPoints, BlockPoints, SubtractPoints},
@@ -47,7 +47,7 @@ async fn main() {
     //SECTION - Left Neighbor Initialization
     let righ_neighbor_clone = righ_neighbor.clone();
     let server_actor_clone = server_address.clone();
-    let (tx, mut rx) = broadcast::channel::<Arc<Mutex<Token>>>(1);
+    let (tx, rx) = broadcast::channel::<Arc<Mutex<Token>>>(10);
     let token_clone = token.clone();
     let tx_clone = tx.clone();
     let _ = tokio::spawn(async move {
@@ -119,29 +119,32 @@ async fn handle_client(
                     let method = parts[0];
                     let customer_id: u32 = parts[1].parse().unwrap();
                     let points: u32 = parts[2].parse().unwrap();
-                    let token_receiver = rx.resubscribe();
-
+                    let server_address_clone = server_address.clone();
+                    let mut token_mutex : Option<Arc<Mutex<Token>>> = None;
                     let result = match method {
                         "REQ" => {
                             let mut recv_again = true;
-                            let mut handle_res= "".to_string();
+                            let mut handle_res: String= "".to_string();
+                            let mut already_increased = false;
                             while recv_again {
                                 match rx.recv().await {
                                     Ok(token_lock) => {
-                                        info!("LOCAL SERVER - REQ requests");
-                                        info!("{:?}", parts);
-                                        info!("Leo REQ en el proceso {}", process::id());
+                                        token_mutex = Some(token_lock.clone());
+                                        info!("LOCAL SERVER - {:?}", parts);
                                         let msg = BlockPoints {
                                             customer_id,
                                             points,
                                             token_lock,
+                                            already_increased
                                         };
 
-                                        let res = match server_address.send(msg).await {
+                                        let _ = match server_address.send(msg).await {
                                             Ok(r) => {
                                                 if r != "AGAIN".to_string() {
                                                     recv_again = false;
                                                     handle_res = r;
+                                                }else {
+                                                    already_increased = true;
                                                 }
                                             }
                                             Err(_) => {}
@@ -164,6 +167,7 @@ async fn handle_client(
                     let result_clone = result.clone();
                     handle_result(&mut w, result).await;
                     // Ahora espero por el RES de este OK para saber si debo restar o desbloquear
+                    info!("LOCAL SERVER - Server Waiting for RES");
                     if result_clone.is_err() {
                         continue;
                     }
@@ -197,42 +201,52 @@ async fn handle_client(
                         res_result = Err(actix::MailboxError::Closed);
                     }
                     handle_result(&mut w, res_result).await;
-
-                    let mut token_receiver = rx.resubscribe();
                     let mut should_send_token = false;
-                    match token_receiver.recv().await {
-                        Ok(t) => {
-                            if let Ok(mut token) = t.lock() {
+                    if let Some(token) = token_mutex {
+                        match token.lock() {
+                            Ok(mut token) => {
+                                info!("LOCAL SERVER - Has lock");
+                                info!("TOKEN STATUS: {:?} , COUNTER {}", token.avaliable(),token.cont());
                                 token.decrease();
                                 if token.empty() {
                                     should_send_token = true;
                                     token.not_avaliable();
                                 }
                             }
-                        }
-                        Err(e) => {
-                            w.write_all(b"ERR: Can't get token\n").await.expect("error");
+                            Err(_) => {
+                                todo!()
+                            },
+                            
                         }
                     }
+                    error!("SUELTO LOCK");
+
+            
+                    error!("Tengo que enviar?");
                     if should_send_token {
+                        error!("SI");
+
+                        info!("Sync next account");
+                        sync_next(server_address_clone,right_neighbor.clone()).await;
+
                         thread::sleep(Duration::from_secs(3));
                         match right_neighbor.send(SendToken {}).await {
                             Ok(res) => match res {
                                 Ok(()) => {
-                                    debug!("ENTRA AL OK");
+                                    info!("LOCAL SERVER - Sent token to next server")
                                 }
                                 Err(_) => {
-                                    error!("RECONECTANDO...");
+                                    error!("LOCAL SERVER - Trying to reconnect...");
                                     right_neighbor
                                         .send(Reconnect {
                                             id_actual,
                                             servers: 3,
                                         })
                                         .await
-                                        .expect("No pude reeconectarme")
+                                        .expect("Couldnt reconnect")
                                 }
                             },
-                            Err(_) => error!("FALLA EL ACTOR"),
+                            Err(_) => error!("LOCAL SERVER - Actor fail"),
                         };
                     }
                 } else if parts.len() == 4 {
@@ -269,6 +283,15 @@ async fn handle_client(
                 break;
             }
         }
+    }
+}
+
+async fn sync_next(server_address: Addr<LocalServer>, rigth_neighbor_addr: Addr<NeighborRight>) {
+    match server_address.send(SyncNextServer{rigth_neighbor_addr}).await {
+        Ok(_) => {
+            info!("Sync to next server done")
+        },
+        Err(_) => error!("Fail trying to sync next server"),
     }
 }
 
@@ -321,7 +344,7 @@ async fn handle_result(w: &mut io::WriteHalf<TcpStream>, result: Result<String, 
             w.write_all(format!("{}\n", res).as_bytes())
                 .await
                 .expect("error");
-            info!("LOCAL SERVER - send response");
+            info!("LOCAL SERVER - send {:?} response",res);
         }
         Err(_) => {
             w.write_all(b"ERR: Internal server error\n")

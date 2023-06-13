@@ -16,6 +16,10 @@ impl Token {
         self.status
     }
 
+    pub fn cont(&self) -> u32 {
+        self.cont
+    }
+
     pub fn avaliable(&mut self) {
         self.status = true;
     }

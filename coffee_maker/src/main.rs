@@ -66,7 +66,7 @@ async fn main() {
         info!("Connected to the server!");
         loop {
             let mut next_order;
-            thread::sleep(Duration::from_secs(3));
+            thread::sleep(Duration::from_secs(10));
 
             let take_order_result = addr.send(TakeOrder {}).await;
             match take_order_result {
@@ -98,9 +98,30 @@ async fn main() {
                     })
                     .await
                     .unwrap()
-                    == false
+                    == true
                 {
-                    next_order.operation = "UNBL".to_string();
+                    let response_message = format!(
+                        "RES, {}, {}, {} \n",
+                        next_order.operation, next_order.account_id, next_order.coffee_points
+                    );
+                    match send(&mut stream, response_message.clone()) {
+                        Ok(_) => info!("Send {:?} message to Server", response_message),
+                        Err(e) => error!("{}", e),
+                    }
+
+                                // 4.  Waits for ACK
+                    info!("Wait for ACK response from server");
+                    match read(&mut stream) {
+                        Ok(response) => {
+                            info!("Read response from server after writing");
+                            if response == "ACK" {
+                                info!("ACK from server");
+                            } else {
+                                error!("Not ACK from server")
+                            }
+                        }
+                        Err(e) => error!("{}", e),
+                    }
                 }
             } else {
                 // 1. Ask for points
@@ -150,31 +171,32 @@ async fn main() {
                         next_order.operation = "UNBL".to_string();
                     }
                 }
-            }
-
-            // 3. Send results
-            let response_message = format!(
-                "RES, {}, {}, {} \n",
-                next_order.operation, next_order.account_id, next_order.coffee_points
-            );
-            match send(&mut stream, response_message.clone()) {
-                Ok(_) => info!("Send {:?} message to Server", response_message),
-                Err(e) => error!("{}", e),
-            }
-
-            // 4.  Waits for ACK
-            info!("Wait for ACK response from server");
-            match read(&mut stream) {
-                Ok(response) => {
-                    info!("Read response from server after writing");
-                    if response == "ACK" {
-                        info!("ACK from server");
-                    } else {
-                        error!("Not ACK from server")
-                    }
+                // 3. Send results
+                let response_message = format!(
+                    "RES, {}, {}, {} \n",
+                    next_order.operation, next_order.account_id, next_order.coffee_points
+                );
+                match send(&mut stream, response_message.clone()) {
+                    Ok(_) => info!("Send {:?} message to Server", response_message),
+                    Err(e) => error!("{}", e),
                 }
-                Err(e) => error!("{}", e),
+
+                // 4.  Waits for ACK
+                info!("Wait for ACK response from server");
+                match read(&mut stream) {
+                    Ok(response) => {
+                        info!("Read response from server after writing");
+                        if response == "ACK" {
+                            info!("ACK from server");
+                        } else {
+                            error!("Not ACK from server")
+                        }
+                    }
+                    Err(e) => error!("{}", e),
+                }
             }
+
+
         }
     } else {
         error!("Couldn't connect to server...");

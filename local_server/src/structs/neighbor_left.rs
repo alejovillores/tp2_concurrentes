@@ -26,20 +26,6 @@ impl NeighborLeft {
             id,
         }
     }
-
-    fn handle_token(&self, token_monitor: Arc<(Mutex<Token>, Condvar)>) {
-        env_logger::init();
-
-        let (token_lock, cvar) = &*token_monitor;
-
-        if let Ok(mut token) = token_lock.lock() {
-            token.avaliable();
-            info!("Token is avaliable for using");
-            cvar.notify_all();
-        };
-    }
-
-
     pub async fn start(
         &self,
         righ_neighbor: Addr<NeighborRight>,
@@ -67,44 +53,43 @@ impl NeighborLeft {
                                 match reader.read_line(&mut line).await {
                                     Ok(s) => {
                                         if s > 0 {
-                                            info!("Leo en el proceso {}", process::id());
-                                            debug!("Read {} from TCP Stream success", line);
+                                            info!("LEFT NEIGHBOR - Read {} from TCP Stream success", line);
                                             let parts: Vec<&str> =
                                                 line.split(',').map(|s| s.trim()).collect();
-
+                                            
                                             if parts[0] == "TOKEN" {
-                                                info!("Token received from {}", addr);
+                                                info!("LEFT NEIGHBOR - Token received from {}", addr);
                                                 let mut should_send_token = false;
+
                                                 let token_clone_2 = token_clone.clone();
                                                 if let Ok(mut token_guard) = token_clone.lock() {
                                                     if token_guard.empty() {
-                                                        info!("Tengo que enviar el token");
+                                                        info!("LEFT NEIGHBOR - No blocked points, should send package");
                                                         should_send_token = true;
                                                     } else {
-                                                        info!("Token is avaliable for using");
+                                                        info!("LEFT NEIGHBOR - Token is avaliable for using");
                                                         token_guard.avaliable();
                                                     }
+                                                    token_sender_clone.send(token_clone_2).unwrap();
                                                 };
-                                                token_sender_clone.send(token_clone_2).unwrap();
                                                 if should_send_token {
-                                                    thread::sleep(Duration::from_secs(3));
+                                                    thread::sleep(Duration::from_secs(5));
                                                     match addr_clone.send(SendToken {}).await {
                                                         Ok(res) => match res {
                                                             Ok(()) => {
-                                                                debug!("ENTRA AL OK");
                                                             }
                                                             Err(_) => {
-                                                                error!("RECONECTANDO...");
+                                                                error!("Reconnecting ...");
                                                                 addr_clone
                                                                     .send(Reconnect {
                                                                         id_actual,
                                                                         servers: 2,
                                                                     })
                                                                     .await
-                                                                    .expect("No pude reeconectarme")
+                                                                    .expect("Reconnecting fail")
                                                             }
                                                         },
-                                                        Err(_) => error!("FALLA EL ACTOR"),
+                                                        Err(_) => error!("Actor"),
                                                     };
                                                 }
                                             } else {
@@ -119,6 +104,7 @@ impl NeighborLeft {
                                                                 let customer_id = parts[0].parse::<u32>().unwrap();
                                                                 let points = parts[1].parse::<u32>().unwrap();
                                                                 _server_actor_clone.send(SyncAccount {customer_id, points}).await.unwrap();
+                                                                info!("Send to server sync account");
                                                             } else if parts.len() == 1{
                                                                 match parts[0] {
                                                                     "FINSYNC" => {
@@ -145,6 +131,7 @@ impl NeighborLeft {
 
                                             }
                                         }
+                                        line.clear();
                                     }
                                     Err(_e) => {
                                         error!("Error reading from TCP Stream");
