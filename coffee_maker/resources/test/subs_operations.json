@@ -1,0 +1,22 @@
+[
+    {
+        "account_id": 1,
+        "coffee_points": 10,
+        "operation": "SUBS"
+    },
+    {
+        "account_id": 2,
+        "coffee_points": 15,
+        "operation": "SUBS"
+    },
+    {
+        "account_id": 3,
+        "coffee_points": 10,
+        "operation": "SUBS"
+    },
+    {
+        "account_id": 4,
+        "coffee_points": 3,
+        "operation": "SUBS"
+    }
+]
