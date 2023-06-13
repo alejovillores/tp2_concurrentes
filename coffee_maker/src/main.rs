@@ -55,16 +55,18 @@ async fn main() {
 
     let args: Vec<String> = env::args().collect();
     let id: u8 = args[1].parse::<u8>().expect("Could not parse number");
+    let probability: f64 = args[2].parse::<f64>().expect("Could not parse number");
+    let orders_file: String = args[3].clone();
 
     debug!("WILL CONNECT TO SERVER id: {}, ", id);
 
     let probablity_calculator = ProbabilityCalculator::new();
     let order_parser =
-        OrderParser::new(String::from("coffee_maker/resources/test/two_orders.json"));
+        OrderParser::new(String::from(orders_file));
 
     //FIXME: Correct unwrap
     let coffee_maker_actor =
-        CoffeeMaker::new(PROBABLITY, probablity_calculator, order_parser).unwrap();
+        CoffeeMaker::new(probability, probablity_calculator, order_parser).unwrap();
     let addr = coffee_maker_actor.start();
     info!("CoffeeMaker actor is active");
 
