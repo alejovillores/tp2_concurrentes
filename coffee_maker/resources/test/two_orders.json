@@ -7,16 +7,6 @@
     {
         "account_id": 1,
         "coffee_points": 9,
-        "operation": "ADD"
-    },
-    {
-        "account_id": 1,
-        "coffee_points": 9,
         "operation": "SUBS"
-    },
-    {
-        "account_id": 6,
-        "coffee_points": 9,
-        "operation": "ADD"
     }
 ]

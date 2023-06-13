@@ -5,6 +5,8 @@ use log::{error, info};
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
+use std::process;
+use tokio::runtime::Runtime;
 
 use crate::structs::account::Account;
 use crate::structs::messages::{
@@ -37,13 +39,41 @@ impl Handler<AddPoints> for LocalServer {
         let customer_id = msg.customer_id;
         let points = msg.points;
 
-        let points_added = match self.points_added.entry(customer_id) {
+        // let points_added = match self.points_added.entry(customer_id) {
+        //     Entry::Occupied(o) => o.into_mut(),
+        //     Entry::Vacant(v) => v.insert(Arc::new(Mutex::new(0))),
+        // };
+        // match points_added.lock() {
+        //     Ok(mut points_added_lock) => {
+        //         *points_added_lock += points;
+        //         info!("{} points added to account {}", points, customer_id);
+        //         "ACK".to_string()
+        //     }
+        //     Err(_) => {
+        //         error!(
+        //             "Can't get lock from account {} to add {} points",
+        //             customer_id, points
+        //         );
+        //         "ERROR".to_string()
+        //     }
+        // }
+
+        let account = match self.accounts.entry(customer_id) {
             Entry::Occupied(o) => o.into_mut(),
-            Entry::Vacant(v) => v.insert(Arc::new(Mutex::new(0))),
+            Entry::Vacant(v) => {
+                let id_clone = customer_id.clone();
+                match Account::new(id_clone) {
+                    Ok(new_account) => v.insert(Arc::new(Mutex::new(new_account))),
+                    Err(err) => {
+                        println!("Error al crear la cuenta: {}", err);
+                        return "ERROR".to_string()
+                    }
+                }
+            },
         };
-        match points_added.lock() {
-            Ok(mut points_added_lock) => {
-                *points_added_lock += points;
+        match account.lock() {
+            Ok(mut account_lock) => {
+                account_lock.add_points(points);
                 info!("{} points added to account {}", points, customer_id);
                 "ACK".to_string()
             }
@@ -61,53 +91,48 @@ impl Handler<AddPoints> for LocalServer {
 impl Handler<BlockPoints> for LocalServer {
     type Result = String;
 
-    fn handle(&mut self, msg: BlockPoints, _ctx: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, mut msg: BlockPoints, _ctx: &mut Context<Self>) -> Self::Result {
         let customer_id = msg.customer_id;
         let points = msg.points;
-        let (token_lock, cvar) = &*msg.token_monitor;
+        let token_lock = msg.token_lock;
         let ok_result_msg = "OK".to_string();
 
-        if let Ok(mut token) = token_lock.lock() {
-            info!("Sumando 1 al token");
-            token.increase();
-        }
-        info!("Esperando por el token");
-        if let Ok(guard) = token_lock.lock() {
-            if let Ok(_) = cvar.wait_while(guard, |token| !token.is_avaliable()) {
-                info!("ENTRE A LA CONDVAR");
-                match self.accounts.get_mut(&customer_id) {
-                    Some(account) => match account.lock() {
-                        Ok(mut account_lock) => {
-                            let result = account_lock.block_points(points);
-                            if result.is_ok() {
-                                info!("{} points blocked from account {}", points, customer_id);
-                            } else {
-                                error!(
-                                    "Couldn't block {} points from account {}",
-                                    points, customer_id
-                                );
-                                return "ERROR".to_string();
-                            }
-                        }
-                        Err(_) => {
+        if let Ok(mut token_guard) = token_lock.lock() {
+            if ! token_guard.is_avaliable() {
+                info!("Sumando 1 al token");
+                token_guard.increase();
+                info!("Entro aca.");
+                return "AGAIN".to_string();
+            }
+            match self.accounts.get_mut(&customer_id) {
+                Some(account) => match account.lock() {
+                    Ok(mut account_lock) => {
+                        let result = account_lock.block_points(points);
+                        if result.is_ok() {
+                            info!("{} points blocked from account {}", points, customer_id);
+                        } else {
                             error!(
-                                "Can't get lock from account {} to block {} points",
-                                customer_id, points
-                            );
+                        "Couldn't block {} points from account {}",
+                        points, customer_id
+                    );
                             return "ERROR".to_string();
                         }
-                    },
-                    None => {
-                        error!("The requested account does not exist");
+                    }
+                    Err(_) => {
+                        error!(
+                    "Can't get lock from account {} to block {} points",
+                    customer_id, points
+                );
                         return "ERROR".to_string();
                     }
+                },
+                None => {
+                    error!("The requested account does not exist");
+                    return "ERROR".to_string();
                 }
             }
-        } else {
-            error!("Account {} does not exist", customer_id);
-            return "ERROR".to_string();
         }
-        cvar.notify_all();
+
         ok_result_msg
     }
 }

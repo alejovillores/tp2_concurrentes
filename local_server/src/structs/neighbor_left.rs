@@ -5,6 +5,8 @@ use std::thread;
 use std::time::Duration;
 use tokio::io::{self, split, AsyncBufReadExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
+use std::process;
+use tokio::sync::broadcast::Sender;
 
 use crate::local_server::LocalServer;
 use crate::structs::messages::{Reconnect, SendToken, SyncAccount};
@@ -40,19 +42,20 @@ impl NeighborLeft {
 
     pub async fn start(
         &self,
-        token_monitor: Arc<(Mutex<Token>, Condvar)>,
         righ_neighbor: Addr<NeighborRight>,
-        server_actor: Addr<LocalServer>
+        server_actor: Addr<LocalServer>,
+        token_sender: Sender<Arc<Mutex<Token>>>,
+        token: Arc<Mutex<Token>>,
     ) -> Result<(), String> {
         if let Some(listener) = &self.connection {
             loop {
-                let token_monitor_clone = token_monitor.clone();
                 match listener.accept().await {
                     Ok((stream, addr)) => {
                         let addr_clone = righ_neighbor.clone();
                         let id_actual = self.id.clone();
                         let server_actor_clone = server_actor.clone();
-
+                        let token_clone = token.clone();
+                        let token_sender_clone = token_sender.clone();
                         tokio::spawn(async move {
                             warn!("LEFT NEIGHBOR - New connection from {}", addr);
                             let (r, _w): (io::ReadHalf<TcpStream>, io::WriteHalf<TcpStream>) =
@@ -64,24 +67,25 @@ impl NeighborLeft {
                                 match reader.read_line(&mut line).await {
                                     Ok(s) => {
                                         if s > 0 {
+                                            info!("Leo en el proceso {}", process::id());
                                             debug!("Read {} from TCP Stream success", line);
                                             let parts: Vec<&str> =
                                                 line.split(',').map(|s| s.trim()).collect();
 
                                             if parts[0] == "TOKEN" {
                                                 info!("Token received from {}", addr);
-                                                let (token_lock, cvar) = &*token_monitor_clone;
                                                 let mut should_send_token = false;
-
-                                                if let Ok(mut token) = token_lock.lock() {
-                                                    if token.empty() {
+                                                let token_clone_2 = token_clone.clone();
+                                                if let Ok(mut token_guard) = token_clone.lock() {
+                                                    if token_guard.empty() {
+                                                        info!("Tengo que enviar el token");
                                                         should_send_token = true;
                                                     } else {
                                                         info!("Token is avaliable for using");
-                                                        token.avaliable();
-                                                        cvar.notify_all();
+                                                        token_guard.avaliable();
                                                     }
                                                 };
+                                                token_sender_clone.send(token_clone_2).unwrap();
                                                 if should_send_token {
                                                     thread::sleep(Duration::from_secs(3));
                                                     match addr_clone.send(SendToken {}).await {
@@ -94,7 +98,7 @@ impl NeighborLeft {
                                                                 addr_clone
                                                                     .send(Reconnect {
                                                                         id_actual,
-                                                                        servers: 3,
+                                                                        servers: 2,
                                                                     })
                                                                     .await
                                                                     .expect("No pude reeconectarme")

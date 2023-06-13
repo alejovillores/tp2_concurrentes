@@ -7,6 +7,7 @@ use actix::Message;
 
 use super::token::Token;
 use std::collections::HashMap;
+use tokio::sync::broadcast;
 
 use super::account::Account;
 
@@ -22,7 +23,7 @@ pub struct AddPoints {
 pub struct BlockPoints {
     pub customer_id: u32,
     pub points: u32,
-    pub token_monitor: Arc<(Mutex<Token>, Condvar)>,
+    pub token_lock: Arc<Mutex<Token>>,
 }
 
 #[derive(Message, Debug)]

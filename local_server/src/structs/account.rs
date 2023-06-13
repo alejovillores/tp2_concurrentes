@@ -4,6 +4,7 @@ pub struct Account {
     pub customer_id: u32,
     pub points: u32,
     pub blocked_points: u32,
+    pub points_to_add: u32,
 }
 
 impl Account {
@@ -12,17 +13,22 @@ impl Account {
             customer_id,
             points: 0,
             blocked_points: 0,
+            points_to_add: 0,
         })
     }
 
     pub fn add_points(&mut self, points: u32) {
-        self.points += points;
+        self.points_to_add += points;
     }
 
     pub fn subtract_points(&mut self, points: u32) -> Result<(), String> {
         if self.blocked_points >= points {
             self.blocked_points -= points;
-            self.points -= points;
+            if self.points_to_add > points {
+                self.points_to_add -= points;
+            } else {
+                self.points -= points;
+            }
             Ok(())
         } else {
             Err("No se han bloqueado los puntos con anterioridad".to_string())
@@ -30,7 +36,7 @@ impl Account {
     }
 
     pub fn block_points(&mut self, points: u32) -> Result<(), String> {
-        if self.points - self.blocked_points >= points {
+        if (self.points + self.points_to_add) - self.blocked_points >= points {
             self.blocked_points += points;
             Ok(())
         } else {

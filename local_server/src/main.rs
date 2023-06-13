@@ -6,6 +6,7 @@ use local_server::structs::token::Token;
 use log::{debug, error, info, warn};
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
+use std::process;
 
 use local_server::structs::messages::{ConfigStream, Reconnect, SendToken, UnblockPoints};
 use local_server::{
@@ -15,6 +16,7 @@ use local_server::{
 use std::{env, net, thread};
 use tokio::io::{self, split, AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
+use tokio::sync::broadcast;
 
 #[actix_rt::main]
 async fn main() {
@@ -31,8 +33,8 @@ async fn main() {
 
     let stream: Option<net::TcpStream> = None;
     let server_address = LocalServer::new().unwrap().start();
-    let token_monitor: Arc<(Mutex<Token>, Condvar)> =
-        Arc::new((Mutex::new(Token::new()), Condvar::new()));
+    let token: Arc<Mutex<Token>> =
+        Arc::new(Mutex::new(Token::new()));
     let listener = TcpListener::bind(format!("127.0.0.1:808{}", id))
         .await
         .expect("Failed to bind address");
@@ -44,19 +46,21 @@ async fn main() {
 
     //SECTION - Left Neighbor Initialization
     let righ_neighbor_clone = righ_neighbor.clone();
-    let token_monitor_clone = token_monitor.clone();
     let server_actor_clone = server_address.clone();
+    let (tx, mut rx) = broadcast::channel::<Arc<Mutex<Token>>>(1);
+    let token_clone = token.clone();
+    let tx_clone = tx.clone();
     let _ = tokio::spawn(async move {
         info!("LEFT NEIGHBOR - listening on 127.0.0.1:505{}", id);
         let left_neighbor = NeighborLeft::new(left_neighbor_listener, id);
         left_neighbor
-            .start(token_monitor_clone, righ_neighbor_clone, server_actor_clone)
+            .start(righ_neighbor_clone, server_actor_clone, tx_clone, token_clone)
             .await
             .expect("Error starting left neighbor")
     });
 
     //SECTION - Right Neighbor Initialization
-    match connect_right_neigbor(id, 3) {
+    match connect_right_neigbor(id, 2) {
         Ok(s) => {
             info!("Connecting Right Neighbor");
             righ_neighbor
@@ -79,13 +83,13 @@ async fn main() {
     //SECTION - Local Server Initialization
     info!("LOCAL SERVER - Waiting for connections from coffee makers!");
     loop {
-        let token_monitor_clone = token_monitor.clone();
         match listener.accept().await {
             Ok((stream, _)) => {
                 let server_addr_clone = server_address.clone();
                 let right_neighbor_clone = righ_neighbor.clone();
+                let token_receiver = rx.resubscribe();
                 tokio::spawn(async move {
-                    handle_client(stream, server_addr_clone, token_monitor_clone, right_neighbor_clone, id).await
+                    handle_client(stream, server_addr_clone, right_neighbor_clone, id, token_receiver.resubscribe()).await
                 });
             }
             Err(e) => {
@@ -99,9 +103,9 @@ async fn main() {
 async fn handle_client(
     stream: TcpStream,
     server_address: Addr<LocalServer>,
-    token_monitor: Arc<(Mutex<Token>, Condvar)>,
     right_neighbor: Addr<NeighborRight>,
     id_actual: u8,
+    mut rx: broadcast::Receiver<Arc<Mutex<Token>>>,
 ) {
     let (r, mut w): (io::ReadHalf<TcpStream>, io::WriteHalf<TcpStream>) = split(stream);
 
@@ -110,24 +114,46 @@ async fn handle_client(
         let mut line = String::new();
         match reader.read_line(&mut line).await {
             Ok(_) => {
-                let token_monitor_clone = token_monitor.clone();
                 let parts: Vec<&str> = line.split(',').map(|s| s.trim()).collect();
                 if parts.len() == 3 {
                     let method = parts[0];
                     let customer_id: u32 = parts[1].parse().unwrap();
                     let points: u32 = parts[2].parse().unwrap();
+                    let token_receiver = rx.resubscribe();
 
                     let result = match method {
                         "REQ" => {
+                            let mut recv_again = true;
+                            let mut handle_res= "".to_string();
+                            while recv_again {
+                                match rx.recv().await {
+                                    Ok(token_lock) => {
+                                        info!("LOCAL SERVER - REQ requests");
+                                        info!("{:?}", parts);
+                                        info!("Leo REQ en el proceso {}", process::id());
+                                        let msg = BlockPoints {
+                                            customer_id,
+                                            points,
+                                            token_lock,
+                                        };
 
-                            info!("LOCAL SERVER - REQ requests");
-                            let msg = BlockPoints {
-                                customer_id,
-                                points,
-                                token_monitor: token_monitor_clone,
-                            };
-
-                            server_address.send(msg).await
+                                        let res = match server_address.send(msg).await {
+                                            Ok(r) => {
+                                                if r != "AGAIN".to_string() {
+                                                    recv_again = false;
+                                                    handle_res = r;
+                                                }
+                                            }
+                                            Err(_) => {}
+                                        };
+                                    }
+                                    Err(e) => {
+                                        error!("{}", e);
+                                        handle_res = "ERROR".to_string()
+                                    }
+                                }
+                            }
+                            Ok(handle_res)
                         }
                         _ => {
                             error!("LOCAL SERVER - ERR: Invalid method");
@@ -141,50 +167,53 @@ async fn handle_client(
                     if result_clone.is_err() {
                         continue;
                     }
-                    loop {
-                        line.clear();
-                        if reader.read_line(&mut line).await.is_err() {
-                            error!("Error reading from client");
-                            break;
-                        }
-
-                        let parts: Vec<&str> = line.split(',').map(|s| s.trim()).collect();
-                        let res_result: Result<String, MailboxError>;
-                        if parts.len() == 4
-                            && parts[0] == "RES"
-                            && parts[2].parse::<u32>().is_ok()
-                            && parts[3].parse::<u32>().is_ok()
-                        {
-                            let operation = parts[1];
-                            let customer_id: u32 = parts[2].parse().expect("No puedo parsear");
-                            let points: u32 = parts[3].parse().unwrap();
-
-                            res_result = handle_res_message(
-                                operation,
-                                &server_address,
-                                customer_id,
-                                points,
-                                &mut w,
-                            )
-                            .await;
-                        } else {
-                            w.write_all(b"ERR: Invalid format\n").await.expect("error");
-                            res_result = Err(actix::MailboxError::Closed);
-                        }
-                        handle_result(&mut w, res_result).await;
+                    line.clear();
+                    if reader.read_line(&mut line).await.is_err() {
+                        error!("Error reading from client");
                         break;
                     }
-                    let (token_lock, cvar) = &*token_monitor.clone();
-                    let mut should_send_token = false;
 
-                    if let Ok(mut token) = token_lock.lock() {
-                        token.decrease();
-                        if token.empty() {
-                            should_send_token = true;
-                            token.not_avaliable();
-                            cvar.notify_all();
+                    let parts: Vec<&str> = line.split(',').map(|s| s.trim()).collect();
+                    let res_result: Result<String, MailboxError>;
+                    if parts.len() == 4
+                        && parts[0] == "RES"
+                        && parts[2].parse::<u32>().is_ok()
+                        && parts[3].parse::<u32>().is_ok()
+                    {
+                        let operation = parts[1];
+                        let customer_id: u32 = parts[2].parse().expect("No puedo parsear");
+                        let points: u32 = parts[3].parse().unwrap();
+
+                        res_result = handle_res_message(
+                            operation,
+                            &server_address,
+                            customer_id,
+                            points,
+                            &mut w,
+                        )
+                        .await;
+                    } else {
+                        w.write_all(b"ERR: Invalid format\n").await.expect("error");
+                        res_result = Err(actix::MailboxError::Closed);
+                    }
+                    handle_result(&mut w, res_result).await;
+
+                    let mut token_receiver = rx.resubscribe();
+                    let mut should_send_token = false;
+                    match token_receiver.recv().await {
+                        Ok(t) => {
+                            if let Ok(mut token) = t.lock() {
+                                token.decrease();
+                                if token.empty() {
+                                    should_send_token = true;
+                                    token.not_avaliable();
+                                }
+                            }
                         }
-                    };
+                        Err(e) => {
+                            w.write_all(b"ERR: Can't get token\n").await.expect("error");
+                        }
+                    }
                     if should_send_token {
                         thread::sleep(Duration::from_secs(3));
                         match right_neighbor.send(SendToken {}).await {
