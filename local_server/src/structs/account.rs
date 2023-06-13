@@ -21,6 +21,11 @@ impl Account {
         self.points_to_add += points;
     }
 
+    pub fn register_added_points(&mut self) {
+        self.points += self.points_to_add;
+        self.points_to_add = 0;
+    }
+
     pub fn subtract_points(&mut self, points: u32) -> Result<(), String> {
         if self.blocked_points >= points {
             self.blocked_points -= points;
