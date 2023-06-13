@@ -1,5 +1,6 @@
 use log::{error, info, warn, debug};
-use std::{env, io::{BufRead, BufReader, Write}, net::TcpStream};
+use std::{env, io::{BufRead, BufReader, Write}, net::TcpStream, thread};
+use std::time::Duration;
 
 use actix::Actor;
 use coffee_maker::{
@@ -65,6 +66,7 @@ async fn main() {
         info!("Connected to the server!");
         loop {
             let mut next_order;
+            thread::sleep(Duration::from_secs(3));
 
             let take_order_result = addr.send(TakeOrder {}).await;
             match take_order_result {

@@ -119,26 +119,26 @@ impl NeighborLeft {
                                                                 match parts[0] {
                                                                     "FINSYNC" => {
                                                                         info!("Finished syncing accounts");
-                                                                        break;                                
-                                                                    }, 
+                                                                        break;
+                                                                    },
                                                                     _ => {
                                                                         error!("Invalid message received when syncing accounts");
                                                                         break;
                                                                     }
-                                                                } 
-                                                            }else { 
+                                                                }
+                                                            }else {
                                                                 error!("Error reading account info from TCP Stream");
                                                                 break;
                                                             }
-                                                        }, 
+                                                        },
                                                         Err(_) => {
                                                             error!("Error reading account info from TCP Stream");
                                                             break;
-                                        
+
                                                         }
                                                     }
                                                 }
-                                        
+
                                             }
                                         }
                                     }

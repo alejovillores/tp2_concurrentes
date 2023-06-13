@@ -135,9 +135,12 @@ async fn handle_client(
                             Err(actix::MailboxError::Closed)
                         }
                     };
+                    let result_clone = result.clone();
                     handle_result(&mut w, result).await;
                     // Ahora espero por el RES de este OK para saber si debo restar o desbloquear
-                    //TODO: chequear que esto sea haga solo si es OK
+                    if result_clone.is_err() {
+                        continue;
+                    }
                     loop {
                         line.clear();
                         if reader.read_line(&mut line).await.is_err() {

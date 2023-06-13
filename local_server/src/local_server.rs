@@ -68,11 +68,13 @@ impl Handler<BlockPoints> for LocalServer {
         let ok_result_msg = "OK".to_string();
 
         if let Ok(mut token) = token_lock.lock() {
+            info!("Sumando 1 al token");
             token.increase();
         }
-
+        info!("Esperando por el token");
         if let Ok(guard) = token_lock.lock() {
             if let Ok(_) = cvar.wait_while(guard, |token| !token.is_avaliable()) {
+                info!("ENTRE A LA CONDVAR");
                 match self.accounts.get_mut(&customer_id) {
                     Some(account) => match account.lock() {
                         Ok(mut account_lock) => {
