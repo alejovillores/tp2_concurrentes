@@ -52,6 +52,7 @@ Esta forma de comunicación permite que la cafetera esté al tanto del estado de
 |---------|--------------|--------------|
 | ``TOKEN``   | SI           | NO           |
 | ``SYNC ``   | SI           | NO           |
+| ``FINSYNC ``   | SI           | NO           |
 | ``REQ  ``   | SI           | SI           |
 | ``RES  ``   | SI           | SI           |
 | ``ADD  ``   | SI           | SI           |
