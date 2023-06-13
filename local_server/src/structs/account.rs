@@ -68,7 +68,6 @@ impl Account {
 mod account_test {
     use super::*;
 
-
     #[test]
     fn test_subtract_points_with_enough_blocked_points_success() {
         let mut account = Account::new(123).unwrap();

@@ -1,7 +1,7 @@
 use actix::Addr;
-use log::{debug, error, info, warn};
-use std::process;
-use std::sync::{Arc, Condvar, Mutex};
+use log::{error, info, warn};
+
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 use tokio::io::{self, split, AsyncBufReadExt, BufReader};
@@ -38,7 +38,7 @@ impl NeighborLeft {
                 match listener.accept().await {
                     Ok((stream, addr)) => {
                         let addr_clone = righ_neighbor.clone();
-                        let id_actual = self.id.clone();
+                        let id_actual = self.id;
                         let server_actor_clone = server_actor.clone();
                         let token_clone = token.clone();
                         let token_sender_clone = token_sender.clone();

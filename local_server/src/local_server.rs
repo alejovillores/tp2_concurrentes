@@ -4,13 +4,13 @@ use actix::{Actor, Context, Handler};
 use log::{error, info, warn};
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
-use std::process;
-use std::sync::{Arc, Mutex};
-use tokio::runtime::Runtime;
 
-use crate::structs::account::{self, Account};
+use std::sync::{Arc, Mutex};
+
+
+use crate::structs::account::{Account};
 use crate::structs::messages::{
-    AddPoints, BlockPoints, SendSync, SubtractPoints, SyncAccount, SyncNextServer, UnblockPoints,
+    AddPoints, BlockPoints, SubtractPoints, SyncAccount, SyncNextServer, UnblockPoints,
 };
 
 #[allow(dead_code)]
@@ -40,7 +40,7 @@ impl Handler<AddPoints> for LocalServer {
         let account = match self.accounts.entry(customer_id) {
             Entry::Occupied(o) => o.into_mut(),
             Entry::Vacant(v) => {
-                let id_clone = customer_id.clone();
+                let id_clone = customer_id;
                 match Account::new(id_clone) {
                     Ok(new_account) => v.insert(Arc::new(Mutex::new(new_account))),
                     Err(err) => {
@@ -70,7 +70,7 @@ impl Handler<AddPoints> for LocalServer {
 impl Handler<BlockPoints> for LocalServer {
     type Result = String;
 
-    fn handle(&mut self, mut msg: BlockPoints, _ctx: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, msg: BlockPoints, _ctx: &mut Context<Self>) -> Self::Result {
         let customer_id = msg.customer_id;
         let points = msg.points;
         let token_lock = msg.token_lock;
@@ -78,8 +78,8 @@ impl Handler<BlockPoints> for LocalServer {
         let mut result_msg: String = "".to_string();
 
         if let Ok(mut token_guard) = token_lock.lock() {
-            if token_guard.is_avaliable() == false {
-                if already_increased == false {
+            if !token_guard.is_avaliable() {
+                if !already_increased {
                     token_guard.increase();
                 }
                 warn!("Local server has not token yet");
@@ -204,7 +204,7 @@ impl Handler<SyncAccount> for LocalServer {
         let account = match self.accounts.entry(customer_id) {
             Entry::Occupied(o) => o.into_mut(),
             Entry::Vacant(v) => {
-                let id_clone = customer_id.clone();
+                let id_clone = customer_id;
                 match Account::new(id_clone) {
                     Ok(new_account) => v.insert(Arc::new(Mutex::new(new_account))),
                     Err(err) => {
@@ -231,7 +231,7 @@ impl Handler<SyncAccount> for LocalServer {
 impl Handler<SyncNextServer> for LocalServer {
     type Result = Vec<Account>;
 
-    fn handle(&mut self, msg: SyncNextServer, _ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, _msg: SyncNextServer, _ctx: &mut Self::Context) -> Self::Result {
         let mut accounts: Vec<Account> = vec![];
         for (_, value) in self.accounts.iter() {
             if let Ok(account) = value.lock() {

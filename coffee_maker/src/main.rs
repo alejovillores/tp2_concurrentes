@@ -104,7 +104,6 @@ async fn main() {
                     })
                     .await
                     .unwrap()
-                    == true
                 {
                     let response_message = format!(
                         "RES, {}, {}, {} \n",
@@ -149,13 +148,12 @@ async fn main() {
                             info!("OK from server");
                             match next_order.operation.as_str() {
                                 "SUBS" => {
-                                    if addr
+                                    if !addr
                                         .send(PointsConsumingOrder {
                                             coffe_points: next_order.coffee_points,
                                         })
                                         .await
                                         .unwrap()
-                                        == false
                                     {
                                         next_order.operation = "UNBL".to_string();
                                     }

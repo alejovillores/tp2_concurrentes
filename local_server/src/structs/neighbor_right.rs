@@ -31,11 +31,11 @@ impl Handler<SendToken> for NeighborRight {
         match self.connection.write(message) {
             Ok(_) => {
                 info!("Server sent token to next server");
-                return Ok(());
+                Ok(())
             }
             Err(e) => {
                 error!("{}", e);
-                return Err(e);
+                Err(e)
             }
         }
     }
@@ -52,8 +52,8 @@ impl Handler<Reconnect> for NeighborRight {
                 n if n >= 1 && n < (msg.servers - 1) => {
                     socket = format!("127.0.0.1:505{}", (msg.id_actual + 2))
                 }
-                n if n == (msg.servers - 1) => socket = format!("127.0.0.1:5051"),
-                _ => socket = format!("127.0.0.1:5052"),
+                n if n == (msg.servers - 1) => socket = "127.0.0.1:5051".to_string(),
+                _ => socket = "127.0.0.1:5052".to_string(),
             }
             info!("Trying to connect to {}", socket);
 
@@ -130,7 +130,7 @@ impl Handler<SendSync> for NeighborRight {
                 return String::from("FAIL");
             }
         }
-        return String::from("OK");
+        String::from("OK")
     }
 }
 

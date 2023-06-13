@@ -2,14 +2,14 @@ use actix::{Actor, Addr, MailboxError};
 use local_server::structs::connection::Connection;
 use local_server::structs::neighbor_left::NeighborLeft;
 use local_server::structs::neighbor_right::NeighborRight;
-use local_server::structs::token::{self, Token};
+use local_server::structs::token::{Token};
 use log::{debug, error, info, warn};
-use std::process;
-use std::sync::{Arc, Condvar, Mutex};
+
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use local_server::structs::messages::{
-    ConfigStream, Reconnect, SendSync, SendToken, SyncAccount, SyncNextServer, UnblockPoints,
+    ConfigStream, Reconnect, SendSync, SendToken, SyncNextServer, UnblockPoints,
 };
 use local_server::{
     local_server::LocalServer,
@@ -151,9 +151,9 @@ async fn handle_client(
                                             already_increased,
                                         };
 
-                                        let _ = match server_address.send(msg).await {
+                                        match server_address.send(msg).await {
                                             Ok(r) => {
-                                                if r != "AGAIN".to_string() {
+                                                if r != *"AGAIN" {
                                                     recv_again = false;
                                                     handle_res = r;
                                                 } else {
@@ -367,7 +367,7 @@ async fn handle_result(w: &mut io::WriteHalf<TcpStream>, result: Result<String, 
 fn connect_right_neigbor(id: u8, coffee_makers: u8) -> Result<net::TcpStream, String> {
     let socket;
     if id == coffee_makers {
-        socket = format!("127.0.0.1:5051")
+        socket = "127.0.0.1:5051".to_string()
     } else {
         socket = format!("127.0.0.1:505{}", (id + 1))
     }
