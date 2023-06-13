@@ -67,6 +67,10 @@ impl Handler<BlockPoints> for LocalServer {
         let (token_lock, cvar) = &*msg.token_monitor;
         let ok_result_msg = "OK".to_string();
 
+        if let Ok(mut token) = token_lock.lock() {
+            token.increase();
+        }
+
         if let Ok(guard) = token_lock.lock() {
             if let Ok(_) = cvar.wait_while(guard, |token| !token.is_avaliable()) {
                 match self.accounts.get_mut(&customer_id) {

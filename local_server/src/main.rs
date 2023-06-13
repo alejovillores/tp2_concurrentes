@@ -7,7 +7,7 @@ use log::{debug, error, info, warn};
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 
-use local_server::structs::messages::{ConfigStream, SendToken, UnblockPoints};
+use local_server::structs::messages::{ConfigStream, Reconnect, SendToken, UnblockPoints};
 use local_server::{
     local_server::LocalServer,
     structs::messages::{AddPoints, BlockPoints, SubtractPoints},
@@ -24,7 +24,7 @@ async fn main() {
     let id: u8 = args[1].parse::<u8>().expect("Could not parse number");
 
     debug!("SERVER INFO id: {}, ", id);
-    debug!("SERVER INFO LEFT NEIGHBOR PORT: 500{}, ", id);
+    debug!("SERVER INFO LEFT NEIGHBOR PORT: 505{}, ", id);
     debug!("SERVER INFO COFFEE MAKER PORT: 808{}, ", id);
 
     thread::sleep(Duration::from_secs(5));
@@ -37,7 +37,7 @@ async fn main() {
         .await
         .expect("Failed to bind address");
 
-    let left_neighbor_listener = TcpListener::bind(format!("127.0.0.1:500{}", id))
+    let left_neighbor_listener = TcpListener::bind(format!("127.0.0.1:505{}", id))
         .await
         .expect("Failed to bind left neighbor address");
     let righ_neighbor: Addr<NeighborRight> = NeighborRight::new(Connection::new(stream)).start();
@@ -47,7 +47,7 @@ async fn main() {
     let token_monitor_clone = token_monitor.clone();
     let server_actor_clone = server_address.clone();
     let _ = tokio::spawn(async move {
-        info!("LEFT NEIGHBOR - listening on 127.0.0.1:500{}", id);
+        info!("LEFT NEIGHBOR - listening on 127.0.0.1:505{}", id);
         let left_neighbor = NeighborLeft::new(left_neighbor_listener, id);
         left_neighbor
             .start(token_monitor_clone, righ_neighbor_clone, server_actor_clone)
@@ -64,7 +64,8 @@ async fn main() {
                 .await
                 .expect("No pudo enviar al actor");
             if id == 1 {
-                righ_neighbor
+                // server_address.send(AddPoints{customer_id: 123, points:10}).await.expect("No pudo crear la cuenta");
+                let _ = righ_neighbor
                     .send(SendToken {})
                     .await
                     .expect("No pudo enviar al actor");
@@ -82,8 +83,9 @@ async fn main() {
         match listener.accept().await {
             Ok((stream, _)) => {
                 let server_addr_clone = server_address.clone();
+                let right_neighbor_clone = righ_neighbor.clone();
                 tokio::spawn(async move {
-                    handle_client(stream, server_addr_clone, token_monitor_clone).await
+                    handle_client(stream, server_addr_clone, token_monitor_clone, right_neighbor_clone, id).await
                 });
             }
             Err(e) => {
@@ -98,6 +100,8 @@ async fn handle_client(
     stream: TcpStream,
     server_address: Addr<LocalServer>,
     token_monitor: Arc<(Mutex<Token>, Condvar)>,
+    right_neighbor: Addr<NeighborRight>,
+    id_actual: u8,
 ) {
     let (r, mut w): (io::ReadHalf<TcpStream>, io::WriteHalf<TcpStream>) = split(stream);
 
@@ -115,6 +119,7 @@ async fn handle_client(
 
                     let result = match method {
                         "REQ" => {
+
                             info!("LOCAL SERVER - REQ requests");
                             let msg = BlockPoints {
                                 customer_id,
@@ -132,6 +137,7 @@ async fn handle_client(
                     };
                     handle_result(&mut w, result).await;
                     // Ahora espero por el RES de este OK para saber si debo restar o desbloquear
+                    //TODO: chequear que esto sea haga solo si es OK
                     loop {
                         line.clear();
                         if reader.read_line(&mut line).await.is_err() {
@@ -163,6 +169,39 @@ async fn handle_client(
                             res_result = Err(actix::MailboxError::Closed);
                         }
                         handle_result(&mut w, res_result).await;
+                        break;
+                    }
+                    let (token_lock, cvar) = &*token_monitor.clone();
+                    let mut should_send_token = false;
+
+                    if let Ok(mut token) = token_lock.lock() {
+                        token.decrease();
+                        if token.empty() {
+                            should_send_token = true;
+                            token.not_avaliable();
+                            cvar.notify_all();
+                        }
+                    };
+                    if should_send_token {
+                        thread::sleep(Duration::from_secs(3));
+                        match right_neighbor.send(SendToken {}).await {
+                            Ok(res) => match res {
+                                Ok(()) => {
+                                    debug!("ENTRA AL OK");
+                                }
+                                Err(_) => {
+                                    error!("RECONECTANDO...");
+                                    right_neighbor
+                                        .send(Reconnect {
+                                            id_actual,
+                                            servers: 3,
+                                        })
+                                        .await
+                                        .expect("No pude reeconectarme")
+                                }
+                            },
+                            Err(_) => error!("FALLA EL ACTOR"),
+                        };
                     }
                 } else if parts.len() == 4 {
                     info!("{:?}", parts);
@@ -263,9 +302,9 @@ async fn handle_result(w: &mut io::WriteHalf<TcpStream>, result: Result<String, 
 fn connect_right_neigbor(id: u8, coffee_makers: u8) -> Result<net::TcpStream, String> {
     let socket;
     if id == coffee_makers {
-        socket = format!("127.0.0.1:5001")
+        socket = format!("127.0.0.1:5051")
     } else {
-        socket = format!("127.0.0.1:500{}", (id + 1))
+        socket = format!("127.0.0.1:505{}", (id + 1))
     }
 
     let mut attemps = 0;

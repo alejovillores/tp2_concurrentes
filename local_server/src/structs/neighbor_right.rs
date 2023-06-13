@@ -50,10 +50,10 @@ impl Handler<Reconnect> for NeighborRight {
         if msg.servers > 2 {
             match msg.id_actual {
                 n if n >= 1 && n < (msg.servers - 1) => {
-                    socket = format!("127.0.0.1:500{}", (msg.id_actual + 2))
+                    socket = format!("127.0.0.1:505{}", (msg.id_actual + 2))
                 }
-                n if n == (msg.servers - 1) => socket = format!("127.0.0.1:5001"),
-                _ => socket = format!("127.0.0.1:5002"),
+                n if n == (msg.servers - 1) => socket = format!("127.0.0.1:5051"),
+                _ => socket = format!("127.0.0.1:5052"),
             }
             info!("Trying to connect to {}", socket);
 

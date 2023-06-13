@@ -1,8 +1,5 @@
-use log::{error, info, warn};
-use std::{
-    io::{BufRead, BufReader, Write},
-    net::TcpStream,
-};
+use log::{error, info, warn, debug};
+use std::{env, io::{BufRead, BufReader, Write}, net::TcpStream};
 
 use actix::Actor;
 use coffee_maker::{
@@ -50,8 +47,13 @@ fn read(stream: &mut TcpStream) -> Result<String, String> {
 async fn main() {
     env_logger::init();
 
+    let args: Vec<String> = env::args().collect();
+    let id: u8 = args[1].parse::<u8>().expect("Could not parse number");
+
+    debug!("WILL CONNECT TO SERVER id: {}, ", id);
+
     let probablity_calculator = ProbabilityCalculator::new();
-    let order_parser = OrderParser::new(String::from("coffee_maker/resources/test/one_order.json"));
+    let order_parser = OrderParser::new(String::from("coffee_maker/resources/test/two_orders.json"));
 
     //FIXME: Correct unwrap
     let coffee_maker_actor =
@@ -59,7 +61,7 @@ async fn main() {
     let addr = coffee_maker_actor.start();
     info!("CoffeeMaker actor is active");
 
-    if let Ok(mut stream) = TcpStream::connect("127.0.0.1:8081") {
+    if let Ok(mut stream) = TcpStream::connect(format!("127.0.0.1:808{}", id)) {
         info!("Connected to the server!");
         loop {
             let mut next_order;

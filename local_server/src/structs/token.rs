@@ -24,6 +24,14 @@ impl Token {
         self.status = false;
     }
 
+    pub fn increase(&mut self) {
+        self.cont += 1;
+    }
+
+    pub fn decrease(&mut self) {
+        self.cont -= 1;
+    }
+
     pub fn empty(&self) -> bool {
         self.cont == 0
     }
