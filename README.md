@@ -48,16 +48,16 @@ Esta forma de comunicación permite que la cafetera esté al tanto del estado de
 
 ### Resumen protocolo
 
-| Mensaje | Coffee Maker | Local Server |
+| Mensaje | Local Server | Coffee Maker | 
 |---------|--------------|--------------|
-| ``TOKEN``   | SI           | NO           |
-| ``SYNC ``   | SI           | NO           |
-| ``FINSYNC ``   | SI           | NO           |
-| ``REQ  ``   | SI           | SI           |
-| ``RES  ``   | SI           | SI           |
-| ``ADD  ``   | SI           | SI           |
-| ``SUBS ``   | SI           | SI           |
-| ``UNBL ``   | SI           | SI           |
+| ``TOKEN``   | SI           | NO       |
+| ``SYNC ``   | SI           | NO       |
+| ``FINSYNC ``| SI           | NO       |
+| ``REQ  ``   | SI           | SI       |
+| ``RES  ``   | SI           | SI       |
+| ``ADD  ``   | SI           | SI       |
+| ``SUBS ``   | SI           | SI       |
+| ``UNBL ``   | SI           | SI       |
 
 
 
