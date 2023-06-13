@@ -16,9 +16,6 @@ use crate::utils::probablity_calculator::ProbabilityCalculator;
 #[double]
 use crate::utils::order_parser::OrderParser;
 
-const COFFE_MADE: i32 = 0;
-const COFFE_NOT_MADE: i32 = 0;
-
 #[allow(dead_code)]
 pub struct CoffeeMaker {
     probability: f64,

@@ -7,8 +7,7 @@ use std::collections::HashMap;
 
 use std::sync::{Arc, Mutex};
 
-
-use crate::structs::account::{Account};
+use crate::structs::account::Account;
 use crate::structs::messages::{
     AddPoints, BlockPoints, SubtractPoints, SyncAccount, SyncNextServer, UnblockPoints,
 };

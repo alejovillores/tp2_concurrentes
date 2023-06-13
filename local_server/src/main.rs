@@ -2,7 +2,7 @@ use actix::{Actor, Addr, MailboxError};
 use local_server::structs::connection::Connection;
 use local_server::structs::neighbor_left::NeighborLeft;
 use local_server::structs::neighbor_right::NeighborRight;
-use local_server::structs::token::{Token};
+use local_server::structs::token::Token;
 use log::{debug, error, info, warn};
 
 use std::sync::{Arc, Mutex};
@@ -51,7 +51,7 @@ async fn main() {
     let (tx, rx) = broadcast::channel::<Arc<Mutex<Token>>>(10);
     let token_clone = token.clone();
     let tx_clone = tx.clone();
-    let _ = tokio::spawn(async move {
+    tokio::spawn(async move {
         info!("LEFT NEIGHBOR - listening on 127.0.0.1:505{}", id);
         let left_neighbor = NeighborLeft::new(left_neighbor_listener, id);
         left_neighbor
@@ -151,16 +151,13 @@ async fn handle_client(
                                             already_increased,
                                         };
 
-                                        match server_address.send(msg).await {
-                                            Ok(r) => {
-                                                if r != *"AGAIN" {
-                                                    recv_again = false;
-                                                    handle_res = r;
-                                                } else {
-                                                    already_increased = true;
-                                                }
+                                        if let Ok(r) = server_address.send(msg).await {
+                                            if r != *"AGAIN" {
+                                                recv_again = false;
+                                                handle_res = r;
+                                            } else {
+                                                already_increased = true;
                                             }
-                                            Err(_) => {}
                                         };
                                     }
                                     Err(e) => {
@@ -365,12 +362,11 @@ async fn handle_result(w: &mut io::WriteHalf<TcpStream>, result: Result<String, 
 }
 
 fn connect_right_neigbor(id: u8, coffee_makers: u8) -> Result<net::TcpStream, String> {
-    let socket;
-    if id == coffee_makers {
-        socket = "127.0.0.1:5051".to_string()
+    let socket = if id == coffee_makers {
+        "127.0.0.1:5051".to_string()
     } else {
-        socket = format!("127.0.0.1:505{}", (id + 1))
-    }
+        format!("127.0.0.1:505{}", (id + 1))
+    };
 
     let mut attemps = 0;
     while attemps < 5 {

@@ -3,11 +3,9 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use actix::{Message};
+use actix::Message;
 
-use super::{token::Token};
-
-
+use super::token::Token;
 
 use super::account::Account;
 
