@@ -1,7 +1,6 @@
 use actix::fut::stream;
 use actix::{Actor, Addr, MailboxError, SyncArbiter};
 use local_server::structs::connection::Connection;
-use local_server::structs::neighbor_left::{self, NeighborLeft};
 use local_server::structs::neighbor_right::NeighborRight;
 use local_server::structs::token::Token;
 use log::{debug, error, info, warn};
@@ -12,7 +11,7 @@ use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 
 use local_server::structs::messages::{
-    ConfigStream, Reconnect, SendSync, SendToken, SyncNextServer, UnblockPoints,
+    ConfigStream, Reconnect, SendSync, SendToken, SyncNextServer, UnblockPoints, SyncAccount,
 };
 use local_server::{
     local_server::LocalServer,
@@ -25,6 +24,7 @@ enum ConnectionType {
     ServerConnection,
     ErrorConnection,
 }
+
 
 async fn main() {
     env_logger::init();
@@ -146,9 +146,9 @@ async fn handle_server_connection(
                         }
                     }
                     "SYNC" => {
-                        let msg = SendSync {
-                            accounts_id: parts[1],
-                            points: parts[2],
+                        let msg = SyncAccount {
+                            customer_id: parts[1].parse::<u32>().expect(""),
+                            points: parts[2].parse::<u32>().expect("")
                         };
                         server_actor_address.send(msg).await;
                         info!("Sync account {} with {} points", parts[1], parts[2]);

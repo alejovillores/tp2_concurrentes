@@ -34,7 +34,7 @@ impl Actor for LocalServer {
 impl Handler<AddPoints> for LocalServer {
     type Result = Result<(), ()>;
 
-    fn handle(&mut self, msg: AddPoints, _ctx: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, msg: AddPoints, _ctx: &mut SyncContext<Self>) -> Self::Result {
         let customer_id = msg.customer_id;
         let points = msg.points;
 
@@ -61,13 +61,13 @@ impl Handler<AddPoints> for LocalServer {
 impl Handler<BlockPoints> for LocalServer {
     type Result = Result<u32, ()>;
 
-    fn handle(&mut self, msg: BlockPoints, _ctx: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, msg: BlockPoints, _ctx: &mut SyncContext<Self>) -> Self::Result {
         let customer_id = msg.customer_id;
         let points = msg.points;
         let mut result = Err(());
 
         match self.accounts.get_mut(&customer_id) {
-                Some(mut account) => {
+                Some(account) => {
                     account.register_added_points();
                     let block_result = account.block_points(points);
 
@@ -93,10 +93,10 @@ impl Handler<BlockPoints> for LocalServer {
 impl Handler<SubtractPoints> for LocalServer {
     type Result = Result<(), ()>;
 
-    fn handle(&mut self, msg: SubtractPoints, _ctx: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, msg: SubtractPoints, _ctx: &mut SyncContext<Self>) -> Self::Result {
         let customer_id = msg.customer_id;
         let points = msg.points;
-        let result = Ok(());
+        let mut result = Ok(());
 
         match self.accounts.get_mut(&customer_id) {
             Some(account) => {
@@ -125,10 +125,10 @@ impl Handler<SubtractPoints> for LocalServer {
 impl Handler<UnblockPoints> for LocalServer {
     type Result = Result<(),()>;
 
-    fn handle(&mut self, msg: UnblockPoints, _ctx: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, msg: UnblockPoints, _ctx: &mut SyncContext<Self>) -> Self::Result {
         let customer_id = msg.customer_id;
         let points = msg.points;
-        let result = Ok(());
+        let mut result = Ok(());
 
         match self.accounts.get_mut(&customer_id) {
                 Some(account) => {
@@ -156,16 +156,17 @@ impl Handler<UnblockPoints> for LocalServer {
 impl Handler<SyncAccount> for LocalServer {
     type Result = String;
 
-    fn handle(&mut self, msg: SyncAccount, _ctx: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, msg: SyncAccount, _ctx: &mut SyncContext<Self>) -> Self::Result {
         let customer_id = msg.customer_id;
         let points = msg.points;
 
-        let account = match self.accounts.entry(customer_id) {
-            Entry::Occupied(o) => o.into_mut(),
+        let account;
+        match self.accounts.entry(customer_id) {
+            Entry::Occupied(o) => account = o.into_mut(),
             Entry::Vacant(v) => {
                 let id_clone = customer_id;
                 match Account::new(id_clone) {
-                    Ok(new_account) => v.insert(Arc::new(Mutex::new(new_account))),
+                    Ok(new_account) =>  account = v.insert(new_account),
                     Err(err) => {
                         error!("Error creating account with id {}: {}", id_clone, err);
                         return "ERROR".to_string();
@@ -173,31 +174,24 @@ impl Handler<SyncAccount> for LocalServer {
                 }
             }
         };
-        match account.lock() {
-            Ok(mut account_lock) => {
-                let _ = account_lock.sync(points);
-                info!("Account {} synched {} points", customer_id, points);
-                "OK".to_string()
-            }
-            Err(_) => {
-                error!("Can't get lock from account {} to sync", customer_id);
-                "ERROR".to_string()
-            }
-        }
+        
+        let _ = account.sync(points);
+        info!("Account {} synched {} points", customer_id, points);
+        "OK".to_string()
+
     }
 }
+
 impl Handler<SyncNextServer> for LocalServer {
     type Result = Vec<Account>;
 
     fn handle(&mut self, _msg: SyncNextServer, _ctx: &mut Self::Context) -> Self::Result {
         let mut accounts: Vec<Account> = vec![];
-        for (_, value) in self.accounts.iter() {
-            if let Ok(account) = value.lock() {
+        for (_, account) in self.accounts.iter() {
                 let mut account_dup =
                     Account::new(account.customer_id).expect("No se pudo crear el account");
                 account_dup.points = account.points;
                 accounts.push(account_dup);
-            }
         }
         error!("cuentas {:?} a enviar", accounts);
         accounts
@@ -207,16 +201,13 @@ impl Handler<SyncNextServer> for LocalServer {
 
 #[cfg(test)]
 mod local_server_test {
-    use std::sync::Condvar;
-
-    use crate::structs::token::Token;
+    use actix::SyncArbiter;
 
     use super::*;
 
     #[actix_rt::test]
     async fn test_add_points() {
-        let server = LocalServer::new().unwrap();
-        let server_addr = server.start();
+        let server_addr = SyncArbiter::start(1, || LocalServer::new().unwrap());
         let msg = AddPoints {
             customer_id: 123,
             points: 10,
@@ -229,9 +220,7 @@ mod local_server_test {
 
     #[actix_rt::test]
     async fn test_block_points_nonexistent_account() {
-        let server = LocalServer::new().unwrap();
-        let server_addr = server.start();
-        let token_monitor = Arc::new((Mutex::new(Token::new()), Condvar::new()));
+        let server_addr = SyncArbiter::start(1, || LocalServer::new().unwrap());
 
         let block_msg = BlockPoints {
             customer_id: 123,
@@ -245,8 +234,7 @@ mod local_server_test {
 
     #[actix_rt::test]
     async fn test_subtract_points_nonexistent_account() {
-        let server = LocalServer::new().unwrap();
-        let server_addr = server.start();
+        let server_addr = SyncArbiter::start(1, || LocalServer::new().unwrap());
         let sub_msg = SubtractPoints {
             customer_id: 123,
             points: 10,
@@ -259,8 +247,7 @@ mod local_server_test {
 
     #[actix_rt::test]
     async fn test_unblock_points_nonexistent_account() {
-        let server = LocalServer::new().unwrap();
-        let server_addr = server.start();
+        let server_addr = SyncArbiter::start(1, || LocalServer::new().unwrap());
         let sub_msg = UnblockPoints {
             customer_id: 123,
             points: 10,
@@ -271,10 +258,9 @@ mod local_server_test {
         assert_eq!(result, Err(()));
     }
 
-    /* #[actix_rt::test]
+    #[actix_rt::test]
     async fn test_sync_account_susccess() {
-        let server = LocalServer::new().unwrap();
-        let server_addr = server.start();
+        let server_addr = SyncArbiter::start(1, || LocalServer::new().unwrap());
         let sync_msg = SyncAccount {
             customer_id: 123,
             points: 15,
@@ -283,5 +269,5 @@ mod local_server_test {
         let result = server_addr.send(sync_msg).await.unwrap();
 
         assert_eq!(result, "OK".to_string());
-    } */
+    }
 }
