@@ -1,11 +1,14 @@
-use actix::{Actor, Addr, MailboxError};
+use actix::fut::stream;
+use actix::{Actor, Addr, MailboxError, SyncArbiter};
 use local_server::structs::connection::Connection;
-use local_server::structs::neighbor_left::NeighborLeft;
+use local_server::structs::neighbor_left::{self, NeighborLeft};
 use local_server::structs::neighbor_right::NeighborRight;
 use local_server::structs::token::Token;
 use log::{debug, error, info, warn};
 
-use std::sync::{Arc, Mutex};
+use std::io::{BufReader, Read, Write};
+use std::net::{TcpListener, TcpStream};
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 
 use local_server::structs::messages::{
@@ -16,274 +19,358 @@ use local_server::{
     structs::messages::{AddPoints, BlockPoints, SubtractPoints},
 };
 use std::{env, net, thread};
-use tokio::io::{self, split, AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::broadcast;
 
-#[actix_rt::main]
+enum ConnectionType {
+    CoffeeConnection,
+    ServerConnection,
+    ErrorConnection,
+}
+
 async fn main() {
     env_logger::init();
 
     let args: Vec<String> = env::args().collect();
     let id: u8 = args[1].parse::<u8>().expect("Could not parse number");
 
-    debug!("SERVER INFO id: {}, ", id);
-    debug!("SERVER INFO LEFT NEIGHBOR PORT: 505{}, ", id);
-    debug!("SERVER INFO COFFEE MAKER PORT: 808{}, ", id);
+    let server_actor_address = SyncArbiter::start(1, || LocalServer::new().unwrap());
+    let token: Arc<(Mutex<Token>, Condvar)> = Arc::new((Mutex::new(Token::new()), Condvar::new()));
+    let connections = Arc::new(Mutex::new(0));
 
-    thread::sleep(Duration::from_secs(5));
+    let listener = TcpListener::bind(format!("127.0.0.1:808{}", id)).expect("Could not bind port ");
 
-    let stream: Option<net::TcpStream> = None;
-    let server_address = LocalServer::new().unwrap().start();
-    let token: Arc<Mutex<Token>> = Arc::new(Mutex::new(Token::new()));
-    let listener = TcpListener::bind(format!("127.0.0.1:808{}", id))
-        .await
-        .expect("Failed to bind address");
-
-    let left_neighbor_listener = TcpListener::bind(format!("127.0.0.1:505{}", id))
-        .await
-        .expect("Failed to bind left neighbor address");
-    let righ_neighbor: Addr<NeighborRight> = NeighborRight::new(Connection::new(stream)).start();
-
-    //SECTION - Left Neighbor Initialization
-    let righ_neighbor_clone = righ_neighbor.clone();
-    let server_actor_clone = server_address.clone();
-    let (tx, rx) = broadcast::channel::<Arc<Mutex<Token>>>(10);
-    let token_clone = token.clone();
-    let tx_clone = tx.clone();
-    tokio::spawn(async move {
-        info!("LEFT NEIGHBOR - listening on 127.0.0.1:505{}", id);
-        let left_neighbor = NeighborLeft::new(left_neighbor_listener, id);
-        left_neighbor
-            .start(
-                righ_neighbor_clone,
-                server_actor_clone,
-                tx_clone,
-                token_clone,
-            )
-            .await
-            .expect("Error starting left neighbor")
-    });
-
-    //SECTION - Right Neighbor Initialization
-    match connect_right_neigbor(id, 3) {
-        Ok(s) => {
-            info!("Connecting Right Neighbor");
-            righ_neighbor
-                .send(ConfigStream { stream: s })
-                .await
-                .expect("No pudo enviar al actor");
-            if id == 1 {
-                // server_address.send(AddPoints{customer_id: 123, points:10}).await.expect("No pudo crear la cuenta");
-                let _ = righ_neighbor
-                    .send(SendToken {})
-                    .await
-                    .expect("No pudo enviar al actor");
-            }
-        }
-        Err(e) => {
-            error!("{}", e)
-        }
-    }
-
-    //SECTION - Local Server Initialization
-    info!("LOCAL SERVER - Waiting for connections from coffee makers!");
-    loop {
-        match listener.accept().await {
-            Ok((stream, _)) => {
-                let server_addr_clone = server_address.clone();
-                let right_neighbor_clone = righ_neighbor.clone();
-                let token_receiver = rx.resubscribe();
+    info!("Waiting for connections from coffee makers!");
+    for tcp_stream in listener.incoming() {
+        match tcp_stream {
+            Ok(tcp_connection) => {
+                info!("New connection stablished");
+                let token_copy = token.clone();
+                let server_actor_copy = server_actor_address.clone();
+                let right_neighbor_copy = right_neighbor_address.clone();
+                let connections_copy: Arc<Mutex<Token>> = connections.clone();
                 tokio::spawn(async move {
-                    handle_client(
-                        stream,
-                        server_addr_clone,
-                        right_neighbor_clone,
-                        id,
-                        token_receiver.resubscribe(),
-                    )
-                    .await
+                    match handle_connection(&tcp_connection) {
+                        ConnectionType::CoffeeConnection => {
+                            handle_coffe_connection(
+                                tcp_connection,
+                                token_copy,
+                                connections_copy,
+                                server_actor_address,
+                                right_neighbor_copy,
+                            )
+                            .await;
+                        }
+                        ConnectionType::ServerConnection => {
+                            handle_server_connection(
+                                tcp_connection,
+                                token_copy,
+                                connections_copy,
+                                server_actor_address,
+                                right_neighbor_copy,
+                            )
+                            .await
+                        }
+                        ConnectionType::ErrorConnection => {
+                            error!("Shutting down connection");
+                            tcp_connection.shutdown(net::Shutdown::Both);
+                        }
+                    }
                 });
             }
-            Err(e) => {
-                error!("Error accepting connection: {}", e);
+            Err(_) => {
+                error!("Error listening new connection");
+            }
+        }
+    }
+}
+
+fn handle_connection(tcp_connection: &TcpStream) -> ConnectionType {
+    let mut line = String::new();
+    let mut reader = BufReader::new(tcp_connection);
+    match reader.read_to_string(&mut line) {
+        Ok(_) => match line.as_str() {
+            "COFFEE HELLO" => {
+                info!("Coffee Connection");
+                return CoffeeConnection;
+            }
+            "SERVER HELLO" => {
+                info!("Server Connection");
+                return ServerConnection;
+            }
+            _ => {
+                error!("Unknown Connection type ");
+                return ErrorConnection;
+            }
+        },
+        Err() => {
+            return ErrorConnection;
+        }
+    }
+}
+
+async fn handle_server_connection(
+    tcp_connection: TcpStream,
+    token_copy: Arc<(Mutex<Token>, Condvar)>,
+    connections: Arc<Mutex<Token>>,
+    server_actor_address: Addr<LocalServer>,
+    right_neighbor_copy: Addr<NeighborRight>,
+) {
+    let mut line = String::new();
+    let mut reader = BufReader::new(tcp_connection);
+
+    loop {
+        match reader.read_to_string(&mut line) {
+            Ok(_) => {
+                let token = token_copy.clone();
+                let parts: Vec<&str> = line.split(',').map(|s| s.trim()).collect();
+                let server = server_actor_address.clone();
+                let neighbor = right_neighbor_copy.clone();
+                match parts[0].as_str() {
+                    "TOKEN" => {
+                        let mut empty = false;
+                        if let Ok(c) = connections.lock() {
+                            if *c <= 0 {
+                                empty = true;
+                            }
+                        }
+                        if empty {
+                            let right_neighbor = right_neighbor_copy.clone();
+                            sync_next(server, neighbor).await;
+                            right_neighbor.send(SendToken {});
+                        } else {
+                            let (lock, cvar) = *token;
+                            if let Ok(t) = lock.lock() {
+                                t.avaliable();
+                                info!("Token is avaliable");
+                                cvar.notify_all();
+                            }
+                        }
+                    }
+                    "SYNC" => {
+                        let msg = SendSync {
+                            accounts_id: parts[1],
+                            points: parts[2],
+                        };
+                        server_actor_address.send(msg).await;
+                        info!("Sync account {} with {} points", parts[1], parts[2]);
+                    }
+                    _ => {
+                        error!("Unkown");
+                        break;
+                    }
+                }
+            }
+            Err(_) => {
+                error!("Could not read from TCP Stream");
                 break;
             }
         }
     }
 }
 
-async fn handle_client(
-    stream: TcpStream,
-    server_address: Addr<LocalServer>,
-    right_neighbor: Addr<NeighborRight>,
-    id_actual: u8,
-    mut rx: broadcast::Receiver<Arc<Mutex<Token>>>,
+async fn handle_coffe_connection(
+    tcp_connection: TcpStream,
+    token_copy: Arc<(Mutex<Token>, Condvar)>,
+    connections: Arc<Mutex<Token>>,
+    server_actor_address: Addr<LocalServer>,
+    right_neighbor_copy: Addr<NeighborRight>,
 ) {
-    let (r, mut w): (io::ReadHalf<TcpStream>, io::WriteHalf<TcpStream>) = split(stream);
-
-    let mut reader = BufReader::new(r);
+    if let Ok(c) = connections.lock() {
+        *c += 1;
+    }
+    let mut line = String::new();
+    let mut reader = BufReader::new(tcp_connection);
+    let mut last_operation: Option<String> = None;
     loop {
-        let mut line = String::new();
-        match reader.read_line(&mut line).await {
+        let token = token_copy.clone();
+        let server = server_actor_address.clone();
+        let neighbor = right_neighbor_copy.clone();
+        let response: String = match reader.read_to_string(&mut line) {
             Ok(_) => {
                 let parts: Vec<&str> = line.split(',').map(|s| s.trim()).collect();
-                if parts.len() == 3 {
-                    let method = parts[0];
-                    let customer_id: u32 = parts[1].parse().unwrap();
-                    let points: u32 = parts[2].parse().unwrap();
-                    let server_address_clone = server_address.clone();
-                    let mut token_mutex: Option<Arc<Mutex<Token>>> = None;
-                    let result = match method {
-                        "REQ" => {
-                            let mut recv_again = true;
-                            let mut handle_res: String = "".to_string();
-                            let mut already_increased = false;
-                            while recv_again {
-                                match rx.recv().await {
-                                    Ok(token_lock) => {
-                                        token_mutex = Some(token_lock.clone());
-                                        info!("LOCAL SERVER - {:?}", parts);
-                                        let msg = BlockPoints {
-                                            customer_id,
-                                            points,
-                                            token_lock,
-                                            already_increased,
-                                        };
-
-                                        if let Ok(r) = server_address.send(msg).await {
-                                            if r != *"AGAIN" {
-                                                recv_again = false;
-                                                handle_res = r;
-                                            } else {
-                                                already_increased = true;
-                                            }
-                                        };
-                                    }
-                                    Err(e) => {
-                                        error!("{}", e);
-                                        handle_res = "ERROR".to_string()
-                                    }
-                                }
-                            }
-                            warn!("Server has token");
-                            Ok(handle_res)
-                        }
-                        _ => {
-                            error!("LOCAL SERVER - ERR: Invalid method");
-                            w.write_all(b"ERR: Invalid method\n").await.unwrap();
-                            Err(actix::MailboxError::Closed)
-                        }
-                    };
-                    let result_clone = result.clone();
-                    handle_result(&mut w, result).await;
-                    // Ahora espero por el RES de este OK para saber si debo restar o desbloquear
-                    info!("Server Waiting for RES");
-                    if result_clone.is_err() {
-                        continue;
+                match parts[0].as_str() {
+                    "ADD" => {
+                        let res = handle_add_message(server, parts[1], parts[2]).await;
+                        return res;
                     }
-                    line.clear();
-                    if reader.read_line(&mut line).await.is_err() {
-                        error!("Error reading from client");
-                        break;
+                    "REQ" => {
+                        let res =
+                            handle_req_message(server, token, last_operation, parts[1], parts[2])
+                                .await;
                     }
-
-                    let parts: Vec<&str> = line.split(',').map(|s| s.trim()).collect();
-                    let res_result: Result<String, MailboxError>;
-                    if parts.len() == 4
-                        && parts[0] == "RES"
-                        && parts[2].parse::<u32>().is_ok()
-                        && parts[3].parse::<u32>().is_ok()
-                    {
-                        let operation = parts[1];
-                        let customer_id: u32 = parts[2].parse().expect("No puedo parsear");
-                        let points: u32 = parts[3].parse().unwrap();
-
-                        res_result = handle_res_message(
-                            operation,
-                            &server_address,
-                            customer_id,
-                            points,
-                            &mut w,
+                    "SUBS" => {
+                        let res = handle_subs_message(
+                            server,
+                            neighbor,
+                            token,
+                            last_operation,
+                            parts[1],
+                            parts[2],
                         )
                         .await;
-                    } else {
-                        w.write_all(b"ERR: Invalid format\n").await.expect("error");
-                        res_result = Err(actix::MailboxError::Closed);
+                        return res;
                     }
-                    handle_result(&mut w, res_result).await;
-                    let mut should_send_token = false;
-                    if let Some(token) = token_mutex {
-                        match token.lock() {
-                            Ok(mut token) => {
-                                token.decrease();
-                                if token.empty() {
-                                    should_send_token = true;
-                                    token.not_avaliable();
-                                }
-                            }
-                            Err(_) => {
-                                error!("An error occurred while accesing the Token");
-                            }
-                        }
+                    "UNBL" => {
+                        let res = handle_unblock_message(
+                            server,
+                            neighbor,
+                            token,
+                            last_operation,
+                            parts[1],
+                            parts[2],
+                        )
+                        .await;
+                        return res;
                     }
-
-                    if should_send_token {
-                        info!("Sync next account");
-                        sync_next(server_address_clone, right_neighbor.clone()).await;
-
-                        thread::sleep(Duration::from_secs(3));
-                        match right_neighbor.send(SendToken {}).await {
-                            Ok(res) => match res {
-                                Ok(()) => {
-                                    info!("Send token from local server");
-                                }
-                                Err(_) => {
-                                    error!("LOCAL SERVER - Trying to reconnect...");
-                                    right_neighbor
-                                        .send(Reconnect {
-                                            id_actual,
-                                            servers: 3,
-                                        })
-                                        .await
-                                        .expect("Couldnt reconnect")
-                                }
-                            },
-                            Err(_) => error!("LOCAL SERVER - Actor fail"),
-                        };
+                    _ => {
+                        error!("Unkown operation");
+                        let res = "UNK".to_string();
+                        return res;
                     }
-                } else if parts.len() == 4 {
-                    info!("{:?}", parts);
-                    let method = parts[0];
-                    let operation = parts[1];
-                    let customer_id: u32 = parts[2].parse().expect("No puedo parsear");
-                    let points: u32 = parts[3].parse().unwrap();
-
-                    let result = match method {
-                        "RES" => {
-                            handle_res_message(
-                                operation,
-                                &server_address,
-                                customer_id,
-                                points,
-                                &mut w,
-                            )
-                            .await
-                        }
-                        _ => {
-                            w.write_all(b"ERR: Invalid method\n").await.expect("error");
-                            Err(actix::MailboxError::Closed)
-                        }
-                    };
-                    handle_result(&mut w, result).await;
-                } else {
-                    w.write_all(b"ERR: Invalid format\n").await.expect("error");
-                    break;
                 }
             }
-            Err(e) => {
-                error!("Error reading from client: {}", e);
+            Err(_) => {
+                error!("Error reading coffee connection line");
                 break;
+            }
+        };
+        tcp_connection.write(response.as_bytes()).unwrap();
+        if response.as_str() == "UNK" {
+            break;
+        }
+    }
+    if let Ok(c) = connections.lock() {
+        *c -= 1;
+    }
+}
+
+async fn handle_add_message(server: Addr<LocalServer>, customer_id: u32, points: u32) -> String {
+    info!("ADD received");
+    let msg = AddPoints {
+        customer_id,
+        points,
+    };
+    let res = server.send(msg).await.unwrap();
+
+    "ACK".to_string()
+}
+
+async fn handle_unblock_message(
+    server: Addr<LocalServer>,
+    neighbor: Addr<NeighborLeft>,
+    token: Arc<(Mutex<Token>, Condvar)>,
+    last_operation: Option<String>,
+    customer_id: u32,
+    points: u32,
+) -> String {
+    info!("UNBL received");
+    let response = match last_operation {
+        Some(operation) => {
+            let (lock, cvar) = *token;
+            if operation == "REQ" {
+                let msg = UnblockPoints {
+                    customer_id,
+                    points,
+                };
+                match server.send(msg).await {
+                    Ok(blocked_points_left) => match blocked_points_left {
+                        b if b == 0 => {
+                            info!("Last UNBL points substracted");
+                            if let Ok(t) = lock.lock() {
+                                t.not_avaliable();
+                                info!("Token is no more avaliable");
+                            }
+                            sync_next(server, neighbor).await;
+                            neighbor.send(SendToken {});
+                            last_operation = None;
+                            return "ACK".to_string();
+                        }
+                        b if b > 0 => {
+                            info!("UNBL points substracted");
+                            return "ACK".to_string();
+                        }
+                    },
+                    Err(_) => "NOT ACK".to_string(),
+                }
+            } else {
+                "NOT ACK".to_string()
+            }
+        }
+        None => "NOT ACK".to_string(),
+    };
+    response
+}
+async fn handle_subs_message(
+    server: Addr<LocalServer>,
+    neighbor: Addr<NeighborLeft>,
+    token: Arc<(Mutex<Token>, Condvar)>,
+    last_operation: Option<String>,
+    customer_id: u32,
+    points: u32,
+) -> String {
+    info!("SUBS received");
+    let response = match last_operation {
+        Some(operation) => {
+            let (lock, cvar) = *token;
+            if operation == "REQ" {
+                let msg = SubtractPoints {
+                    customer_id,
+                    points,
+                };
+                match server.send(msg).await {
+                    Ok(blocked_points_left) => match blocked_points_left {
+                        b if b == 0 => {
+                            info!("Last SUBS points substracted");
+                            if let Ok(t) = lock.lock() {
+                                t.not_avaliable();
+                                info!("Token is no more avaliable");
+                            }
+                            sync_next(server, neighbor).await;
+                            neighbor.send(SendToken {});
+                            last_operation = None;
+                            return "ACK".to_string();
+                        }
+                        b if b > 0 => {
+                            info!("SUBS points substracted");
+                            return "ACK".to_string();
+                        }
+                    },
+                    Err(_) => "NOT ACK".to_string(),
+                }
+            } else {
+                "NOT ACK".to_string()
+            }
+        }
+        None => "NOT ACK".to_string(),
+    };
+    response
+}
+
+async fn handle_req_message(
+    server: Addr<LocalServer>,
+    token_copy: Arc<(Mutex<Token>, Condvar)>,
+    last_operation: Option<String>,
+    customer_id: u32,
+    points: u32,
+) -> String {
+    let (lock, cvar) = *token_copy;
+    if let Ok(guard) = lock.lock() {
+        if let Ok(t) = cvar.wait_while(guard, |token| !token.is_avaliable()) {
+            let msg = BlockPoints {
+                customer_id,
+                points,
+            };
+            match server.send(msg).await.unwrap() {
+                Ok(_) => {
+                    last_operation = Some("REQ".to_string());
+                    return "OK".to_string();
+                }
+                Err(_) => {
+                    error!(
+                        "Error trying to block {} points for account {}",
+                        points, customer_id
+                    );
+                    return "NOT OK".to_string();
+                }
             }
         }
     }
@@ -300,90 +387,4 @@ async fn sync_next(server_address: Addr<LocalServer>, rigth_neighbor_addr: Addr<
         }
         Err(_) => error!("Fail trying to sync next server"),
     }
-}
-
-async fn handle_res_message(
-    operation: &str,
-    server_address: &Addr<LocalServer>,
-    customer_id: u32,
-    points: u32,
-    w: &mut io::WriteHalf<TcpStream>,
-) -> Result<String, MailboxError> {
-    match operation {
-        "ADD" => {
-            info!("RES package with ADD received");
-            let msg = AddPoints {
-                customer_id,
-                points,
-            };
-            server_address.send(msg).await
-        }
-        "SUBS" => {
-            info!("RES package with SUBS received");
-
-            let msg = SubtractPoints {
-                customer_id,
-                points,
-            };
-            server_address.send(msg).await
-        }
-        "UNBL" => {
-            info!("RES package with UNBL received");
-            let msg = UnblockPoints {
-                customer_id,
-                points,
-            };
-            server_address.send(msg).await
-        }
-        _ => {
-            error!("RES package with no valid operation received");
-            w.write_all(b"ERR: Invalid operation\n")
-                .await
-                .expect("error");
-            Err(actix::MailboxError::Closed)
-        }
-    }
-}
-
-async fn handle_result(w: &mut io::WriteHalf<TcpStream>, result: Result<String, MailboxError>) {
-    match result {
-        Ok(res) => {
-            w.write_all(format!("{}\n", res).as_bytes())
-                .await
-                .expect("error");
-            info!("LOCAL SERVER - send {:?} response", res);
-        }
-        Err(_) => {
-            w.write_all(b"ERR: Internal server error\n")
-                .await
-                .expect("error");
-        }
-    }
-}
-
-fn connect_right_neigbor(id: u8, coffee_makers: u8) -> Result<net::TcpStream, String> {
-    let socket = if id == coffee_makers {
-        "127.0.0.1:5051".to_string()
-    } else {
-        format!("127.0.0.1:505{}", (id + 1))
-    };
-
-    let mut attemps = 0;
-    while attemps < 5 {
-        match net::TcpStream::connect(socket.clone()) {
-            Ok(s) => {
-                return Ok(s);
-            }
-            Err(e) => {
-                error!("{}", e);
-                warn!("RIGHT NEIGHBOR - could not connect ");
-                attemps += 1;
-                thread::sleep(Duration::from_secs(5))
-            }
-        }
-    }
-    warn!("RIGHT NEIGHBOR - could not connect in 5 attemps ");
-    Err(String::from(
-        "RIGHT NEIGHBOR - could not connect in 5 attemps",
-    ))
 }

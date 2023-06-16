@@ -61,8 +61,7 @@ async fn main() {
     debug!("WILL CONNECT TO SERVER id: {}, ", id);
 
     let probablity_calculator = ProbabilityCalculator::new();
-    let order_parser =
-        OrderParser::new(String::from(orders_file));
+    let order_parser = OrderParser::new(String::from(orders_file));
 
     let coffee_maker_actor =
         CoffeeMaker::new(probability, probablity_calculator, order_parser).unwrap();
@@ -160,7 +159,6 @@ async fn main() {
                                         next_order.operation = "UNBL".to_string();
                                     }
                                     info!("The SUBS operation could not be performed");
-
                                 }
                                 _ => {
                                     error!("Invalid Order operation");

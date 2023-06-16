@@ -1,6 +1,6 @@
 extern crate actix;
 
-use actix::{Actor, Context, Handler};
+use actix::{Actor, Context, Handler, SyncContext};
 use log::{error, info, warn};
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
@@ -26,7 +26,7 @@ impl LocalServer {
 }
 
 impl Actor for LocalServer {
-    type Context = Context<Self>;
+    type Context = SyncContext<Self>;
 }
 
 impl Handler<AddPoints> for LocalServer {
