@@ -10,31 +10,28 @@ use super::token::Token;
 use super::account::Account;
 
 #[derive(Message, Debug)]
-#[rtype(result = "String")]
+#[rtype(result = "Result<(),()>")]
 pub struct AddPoints {
     pub customer_id: u32,
     pub points: u32,
 }
 
 #[derive(Message, Debug)]
-#[rtype(result = "String")]
+#[rtype(result = "Result<u32,()>")]
 pub struct BlockPoints {
     pub customer_id: u32,
     pub points: u32,
-    pub token_lock: Arc<Mutex<Token>>,
-    pub already_increased: bool,
 }
 
 #[derive(Message, Debug)]
-#[rtype(result = "String")]
+#[rtype(result = "Result<(),()>")]
 pub struct SubtractPoints {
     pub customer_id: u32,
     pub points: u32,
 }
 
 #[derive(Message, Debug)]
-#[rtype(result = "String")]
-
+#[rtype(result = "Result<(),()>")]
 pub struct UnblockPoints {
     pub customer_id: u32,
     pub points: u32,
