@@ -1,7 +1,7 @@
 use std::{net, thread, time::Duration};
 
 use crate::structs::messages::SendSync;
-use actix::{Actor, Context, Handler};
+use actix::{Actor, Handler, SyncContext};
 use log::{error, info, warn};
 use mockall_double::double;
 
@@ -21,12 +21,12 @@ impl NeighborRight {
 }
 
 impl Actor for NeighborRight {
-    type Context = Context<Self>; //SyncContext<Self>;
+    type Context = SyncContext<Self>; 
 }
 
 impl Handler<SendToken> for NeighborRight {
     type Result = Result<(), String>;
-    fn handle(&mut self, _msg: SendToken, _ctx: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, _msg: SendToken, _ctx: &mut SyncContext<Self>) -> Self::Result {
         let message = "TOKEN\n".as_bytes();
         match self.connection.write(message) {
             Ok(_) => {
@@ -43,7 +43,7 @@ impl Handler<SendToken> for NeighborRight {
 
 impl Handler<Reconnect> for NeighborRight {
     type Result = ();
-    fn handle(&mut self, msg: Reconnect, _ctx: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, msg: Reconnect, _ctx: &mut SyncContext<Self>) -> Self::Result {
         let socket;
         let message = "TOKEN\n".as_bytes();
 
@@ -83,14 +83,16 @@ impl Handler<Reconnect> for NeighborRight {
 
 impl Handler<ConfigStream> for NeighborRight {
     type Result = ();
-    fn handle(&mut self, msg: ConfigStream, _ctx: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, msg: ConfigStream, _ctx: &mut SyncContext<Self>) -> Self::Result {
         self.connection = Connection::new(Some(msg.stream));
+        info!("Sending HELLO SERVER to neighbor");
+        self.connection.write("SERVER HELLO\n".as_bytes()).expect("coud not send hello message");
     }
 }
 
 impl Handler<SendSync> for NeighborRight {
     type Result = String;
-    fn handle(&mut self, msg: SendSync, _ctx: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, msg: SendSync, _ctx: &mut SyncContext<Self>) -> Self::Result {
         let accounts = msg.accounts;
         let message = "SYNC \n".as_bytes();
 

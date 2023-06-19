@@ -1,13 +1,12 @@
 extern crate actix;
 
-use actix::{Actor, Context, Handler, SyncContext};
-use log::{error, info, warn};
+use actix::{Actor, Handler, SyncContext};
+use log::{error, info};
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 
-use std::sync::{Arc, Mutex};
 
-use crate::structs::account::{Account, self};
+use crate::structs::account::Account;
 use crate::structs::messages::{
     AddPoints, BlockPoints, SubtractPoints, SyncAccount, SyncNextServer, UnblockPoints,
 };
@@ -15,7 +14,7 @@ use crate::structs::messages::{
 #[allow(dead_code)]
 pub struct LocalServer {
     pub accounts: HashMap<u32, Account>,
-    pub global_blocked_points: u64
+    pub global_blocked_points: u32
 }
 
 impl LocalServer {
@@ -73,7 +72,7 @@ impl Handler<BlockPoints> for LocalServer {
 
                     if block_result.is_ok() {
                         info!("{} points blocked from account {}", points, customer_id);
-                        self.global_blocked_points += msg.points as u64;
+                        self.global_blocked_points += msg.points;
                         result = Ok(msg.points);
                     } else {
                         error!(
@@ -91,65 +90,63 @@ impl Handler<BlockPoints> for LocalServer {
 }
 
 impl Handler<SubtractPoints> for LocalServer {
-    type Result = Result<(), ()>;
+    type Result = Result<u32, ()>;
 
     fn handle(&mut self, msg: SubtractPoints, _ctx: &mut SyncContext<Self>) -> Self::Result {
         let customer_id = msg.customer_id;
         let points = msg.points;
-        let mut result = Ok(());
 
         match self.accounts.get_mut(&customer_id) {
             Some(account) => {
                 let substract_result = account.subtract_points(points);
                     if substract_result.is_ok() {
                         info!("{} points consumed from account {}", points, customer_id);
-                        self.global_blocked_points -= msg.points as u64;
+                        self.global_blocked_points -= msg.points;
+                        return Ok(self.global_blocked_points);
                     }else {
                         error!(
                             "Couldn't consume {} points from account {}",
                             points, customer_id
                         );
-                        result = Err(());
+                        return Err(());
                     }
             }   
             None => {
                 error!(
                     "Account {} does not exist", customer_id);
-                result = Err(());
+                return Err(());
             }
         }
-        result
     }
 }
 
 impl Handler<UnblockPoints> for LocalServer {
-    type Result = Result<(),()>;
+    type Result = Result<u32,()>;
 
     fn handle(&mut self, msg: UnblockPoints, _ctx: &mut SyncContext<Self>) -> Self::Result {
         let customer_id = msg.customer_id;
         let points = msg.points;
-        let mut result = Ok(());
 
         match self.accounts.get_mut(&customer_id) {
                 Some(account) => {
                     let unblock_result = account.unblock_points(points);
                     if unblock_result.is_ok() {
                         info!("{} points unblocked from account {}", points, customer_id);
-                        self.global_blocked_points -= msg.points as u64;
+                        self.global_blocked_points -= msg.points;
+                        return Ok(self.global_blocked_points)
                     } else {
                         error!(
                             "Couldn't unblock {} points from account {}",
                             points, customer_id
                         );
-                        result = Err(());
+                        return Err(());
                     }
                 }
                 None => {
                     error!("Account {} does not exist", customer_id);
-                    result = Err(());
+                    return Err(());
                 }
         }
-        result
     }
 }
 

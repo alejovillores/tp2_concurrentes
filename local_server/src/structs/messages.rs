@@ -24,14 +24,14 @@ pub struct BlockPoints {
 }
 
 #[derive(Message, Debug)]
-#[rtype(result = "Result<(),()>")]
+#[rtype(result = "Result<u32,()>")]
 pub struct SubtractPoints {
     pub customer_id: u32,
     pub points: u32,
 }
 
 #[derive(Message, Debug)]
-#[rtype(result = "Result<(),()>")]
+#[rtype(result = "Result<u32,()>")]
 pub struct UnblockPoints {
     pub customer_id: u32,
     pub points: u32,

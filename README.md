@@ -81,7 +81,7 @@ Correr coffee maker
 `RUST_LOG=info cargo run --bin coffee_maker <server_id>` 
 
 Correr local server
-`RUST_LOG=info cargo run --bin local-server <server_id>`
+`RUST_LOG=info cargo run --bin local_server <server_id>`
 
 #### Local Server dependencies
 
