@@ -4,8 +4,7 @@ use local_server::structs::neighbor_right::NeighborRight;
 use local_server::structs::token::Token;
 use log::{error, info, warn};
 
-use std::io::{BufReader, Read, Write};
-use std::net::{TcpListener, TcpStream};
+use std::io::{Read, Write};
 use std::sync::{Arc};
 use std::time::Duration;
 
@@ -18,6 +17,9 @@ use local_server::{
 };
 use std::{env, net, thread};
 use tokio::sync::{Mutex,Notify};
+use tokio::io::{self, split, AsyncWriteExt, BufReader, AsyncReadExt};
+use tokio::net::{TcpListener, TcpStream};
+
 
 pub enum ConnectionType {
     CoffeeConnection,
@@ -33,7 +35,7 @@ async fn main() {
     let args: Vec<String> = env::args().collect();
     let id: u8 = args[1].parse::<u8>().expect("Could not parse number");
     
-    let listener = TcpListener::bind(format!("127.0.0.1:888{}", id)).expect("Could not bind port ");
+    let listener = TcpListener::bind(format!("127.0.0.1:888{}", id)).await.expect("Failed to bind listener");
     
     let server_actor_address = SyncArbiter::start(1, || LocalServer::new().unwrap());
     let right_neighbor_address = SyncArbiter::start(1, || NeighborRight::new(Connection::new(None)));
@@ -42,98 +44,84 @@ async fn main() {
     let connections = Arc::new(Mutex::new(0));
 
     
-    let conn = connect_right_neigbor(id,2).unwrap();
-    right_neighbor_address.send(ConfigStream {stream:conn}).await.expect("Could not config new stream");
+    let clone = right_neighbor_address.clone();
+    tokio::spawn(async move {
+        thread::sleep(Duration::from_secs(5));
+        let conn = connect_right_neigbor(id,2).unwrap();
+        clone.send(ConfigStream {stream:conn}).await.expect("Could not config new stream");
+    });
     
     
     info!("Waiting for connections!");
-    for tcp_stream in listener.incoming() {
-        match tcp_stream {
-            Ok(tcp_connection) => {
+    loop {
+        match listener.accept().await {
+            Ok((tcp_connection,_)) => {
                 info!("New connection stablished");
                 let token_copy = token.clone();
                 let notify_copy = notify.clone();
                 let server_actor_copy = server_actor_address.clone();
                 let right_neighbor_copy = right_neighbor_address.clone();
                 let connections_copy: Arc<Mutex<i32>> = connections.clone();
-                info!("Clones created");
                 tokio::spawn(async move {
-                    info!("New spawn for connection created");
-                    match handle_connection(tcp_connection.try_clone().unwrap()).await {
-                        ConnectionType::CoffeeConnection => {
-                            handle_coffe_connection(
-                                &tcp_connection,
-                                token_copy,
-                                notify_copy,
-                                connections_copy,
-                                server_actor_copy,
-                                right_neighbor_copy,
-                            )
-                            .await;
-                        }
-                        ConnectionType::ServerConnection => {
-                            handle_server_connection(
-                                tcp_connection,
-                                token_copy,
-                                notify_copy,
-                                connections_copy,
-                                server_actor_copy,
-                                right_neighbor_copy,
-                            )
-                            .await
-                        }
-                        ConnectionType::ErrorConnection => {
-                            error!("Shutting down connection");
-                            tcp_connection.shutdown(net::Shutdown::Both).unwrap();
-                        }
-                    }
+                    handle_connection(tcp_connection,token_copy,notify_copy,connections_copy,server_actor_copy,right_neighbor_copy).await;
                 });
             }
             Err(_) => {
                 error!("Error listening new connection");
+                break;
             }
         }
     }
 }
 
-async fn handle_connection(tcp_connection: TcpStream) -> ConnectionType {
+async fn handle_connection(tcp_connection: TcpStream,
+    token_copy: Arc<Mutex<Token>>,
+    notify_copy:Arc<Notify>,
+    connections: Arc<Mutex<i32>>,
+    server_actor_address: Addr<LocalServer>,
+    right_neighbor_copy: Addr<NeighborRight>
+    ){
+
+    let (r, w): (io::ReadHalf<TcpStream>, io::WriteHalf<TcpStream>) = split(tcp_connection);
+
+    let mut reader: BufReader<io::ReadHalf<TcpStream>> = BufReader::new(r);
+
+    info!("Waiting for reading");
     let mut line = String::new();
-    let mut reader = BufReader::new(tcp_connection);
-    match reader.read_to_string(&mut line) {
-        Ok(_) => match line.as_str() {
-            "COFFEE HELLO" => {
-                info!("Coffee Connection");
-                return ConnectionType::CoffeeConnection;
+    match reader.read_to_string(&mut line).await {
+        Ok(_u) => {
+            info!("line {:?} ", line);
+            match line.as_str() {
+                "CH" => {
+                    info!("Coffee Connection");
+                    handle_coffe_connection(reader, w,token_copy, notify_copy, connections, server_actor_address, right_neighbor_copy).await;
+                }
+                "SH" => {
+                    info!("Server Connection");
+                    handle_server_connection(reader, token_copy, notify_copy, connections, server_actor_address, right_neighbor_copy).await;
+                }
+                _ => {
+                    error!("Unknown Connection type ");
+                }
             }
-            "SERVER HELLO" => {
-                info!("Server Connection");
-                return ConnectionType::ServerConnection;
-            }
-            _ => {
-                error!("Unknown Connection type ");
-                return ConnectionType::ErrorConnection;
-            }
-        },
+        }
         Err(_) => {
             error!("Error reading tcp");
-            return ConnectionType::ErrorConnection;
         }
     }
 }
 
 async fn handle_server_connection(
-    tcp_connection: TcpStream,
+    mut reader:BufReader<io::ReadHalf<TcpStream>>,
     token_copy: Arc<Mutex<Token>>,
     notify_copy:Arc<Notify>,
     connections: Arc<Mutex<i32>>,
     server_actor_address: Addr<LocalServer>,
     right_neighbor_copy: Addr<NeighborRight>,
 ) {
-    let mut line = String::new();
-    let mut reader = BufReader::new(tcp_connection);
-
     loop {
-        match reader.read_to_string(&mut line) {
+        let mut line = String::new();
+        match reader.read_to_string(&mut line).await {
             Ok(_) => {
                 let token = token_copy.clone();
                 let parts: Vec<&str> = line.split(',').map(|s| s.trim()).collect();
@@ -183,7 +171,8 @@ async fn handle_server_connection(
 }
 
 async fn handle_coffe_connection(
-    mut tcp_connection: &TcpStream,
+    mut reader:BufReader<io::ReadHalf<TcpStream>>,
+    mut w:io::WriteHalf<TcpStream>,
     token_copy: Arc<Mutex<Token>>,
     notify_copy:Arc<Notify>,
     connections: Arc<Mutex<i32>>,
@@ -193,15 +182,15 @@ async fn handle_coffe_connection(
     let mut c = connections.lock().await;
     *c += 1;
     
-    let mut line = String::new();
-    let mut reader = BufReader::new(tcp_connection);
+
     let mut last_operation: Option<String> = None;
     loop {
         let token = token_copy.clone();
         let notify = notify_copy.clone();
         let server = server_actor_address.clone();
         let neighbor = right_neighbor_copy.clone();
-        let response: String = match reader.read_to_string(&mut line) {
+        let mut line = String::new();
+        let response: String = match reader.read_to_string(&mut line).await {
             Ok(_) => {
                 let parts: Vec<&str> = line.split(',').map(|s| s.trim()).collect();
                 match parts[0] {
@@ -261,7 +250,7 @@ async fn handle_coffe_connection(
                 break;
             }
         };
-        tcp_connection.write(response.as_bytes()).unwrap();
+        w.write(response.as_bytes()).await.unwrap();
         if response.as_str() == "UNK" {
             break;
         }
@@ -430,7 +419,7 @@ fn connect_right_neigbor(id: u8, servers: u8) -> Result<net::TcpStream, String> 
     while attemps < 5 {
         match net::TcpStream::connect(socket.clone()) {
             Ok(s) => {
-                info!("RIGHT NEIGHBOR -connected ");
+                info!("RIGHT NEIGHBOR - connected to {:?}", socket );
                 return Ok(s);
             }
             Err(e) => {

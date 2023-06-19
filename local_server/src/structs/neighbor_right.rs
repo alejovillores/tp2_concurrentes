@@ -1,4 +1,4 @@
-use std::{net, thread, time::Duration};
+use std::{net, thread, time::Duration, io::Write};
 
 use crate::structs::messages::SendSync;
 use actix::{Actor, Handler, SyncContext};
@@ -83,10 +83,10 @@ impl Handler<Reconnect> for NeighborRight {
 
 impl Handler<ConfigStream> for NeighborRight {
     type Result = ();
-    fn handle(&mut self, msg: ConfigStream, _ctx: &mut SyncContext<Self>) -> Self::Result {
+    fn handle(&mut self, mut msg: ConfigStream, _ctx: &mut SyncContext<Self>) -> Self::Result {
+        msg.stream.write("SH\n".as_bytes()).expect("Falla la escritura tcp");
         self.connection = Connection::new(Some(msg.stream));
         info!("Sending HELLO SERVER to neighbor");
-        self.connection.write("SERVER HELLO\n".as_bytes()).expect("coud not send hello message");
     }
 }
 

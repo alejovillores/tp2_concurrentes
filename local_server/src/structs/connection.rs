@@ -1,3 +1,4 @@
+use log::error;
 use mockall::automock;
 use std::{io::Write, net::TcpStream};
 
@@ -15,9 +16,11 @@ impl Connection {
         if let Some(stream) = self.stream.as_mut() {
             match stream.write(buf) {
                 Ok(_) => {
+                    stream.flush().unwrap();
                     return Ok(());
                 }
                 Err(_) => {
+                    error!("could not write tcp");
                     return Err(String::from("Error no tcp stream"));
                 }
             }
