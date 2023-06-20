@@ -2,7 +2,7 @@ use actix::{Addr, SyncArbiter};
 use local_server::structs::connection::Connection;
 use local_server::structs::neighbor_right::NeighborRight;
 use local_server::structs::token::Token;
-use log::{error, info, warn};
+use log::{error, info, warn, debug};
 use async_std::task;
 
 use std::io::{Read, Write};
@@ -18,7 +18,7 @@ use local_server::{
 };
 use std::{env, net, thread};
 use tokio::sync::{Mutex,Notify};
-use tokio::io::{self, split, AsyncWriteExt, BufReader, AsyncReadExt};
+use tokio::io::{self, split, AsyncWriteExt, BufReader, AsyncReadExt, AsyncBufReadExt};
 use tokio::net::{TcpListener, TcpStream};
 
 
@@ -47,14 +47,15 @@ async fn main() {
     
     let clone = right_neighbor_address.clone();
     tokio::spawn(async move {
-        //task::sleep(Duration::from_secs(5)).await;
         thread::sleep(Duration::from_secs(5));
         let mut conn = connect_right_neigbor(id,2).await.unwrap();
-        conn.write_all("SH".as_bytes()).await.expect("Falla la escritura tcp");
+        conn.write_all(b"SH\n").await.expect("Falla la escritura tcp");
+        if id == 1 {
+            conn.write_all(b"TOKEN\n").await;
+        }
         //clone.send(ConfigStream {stream:conn}).await.expect("Could not config new stream");
         info!("Sending HELLO SERVER to neighbor");
-    }).await.unwrap();
-    
+    });
     
     info!("Waiting for connections!");
     loop {
@@ -92,15 +93,15 @@ async fn handle_connection(tcp_connection: TcpStream,
 
     info!("Waiting for reading");
     let mut line = String::new();
-    match reader.read_to_string(&mut line).await {
+    match reader.read_line(&mut line).await {
         Ok(_u) => {
-            info!("line {:?} ", line);
+            info!("line {} ", line);
             match line.as_str() {
-                "CH" => {
+                "CH\n" => {
                     info!("Coffee Connection");
                     handle_coffe_connection(reader, w,token_copy, notify_copy, connections, server_actor_address, right_neighbor_copy).await;
                 }
-                "SH" => {
+                "SH\n" => {
                     info!("Server Connection");
                     handle_server_connection(reader, token_copy, notify_copy, connections, server_actor_address, right_neighbor_copy).await;
                 }
@@ -123,47 +124,52 @@ async fn handle_server_connection(
     server_actor_address: Addr<LocalServer>,
     right_neighbor_copy: Addr<NeighborRight>,
 ) {
+    let mut line = String::new();
     loop {
-        let mut line = String::new();
         match reader.read_to_string(&mut line).await {
-            Ok(_) => {
-                let token = token_copy.clone();
-                let parts: Vec<&str> = line.split(',').map(|s| s.trim()).collect();
-                let server = server_actor_address.clone();
-                let neighbor = right_neighbor_copy.clone();
-                info!("Read from neigbor {:?}",parts);
-                match parts[0]{
-                    "TOKEN" => {
-                        let mut empty = false;
-                        let guard = connections.lock().await;
+            Ok(u) => {
+                if u > 0 {
+                    let token = token_copy.clone();
+                    let parts: Vec<&str> = line.split(',').map(|s| s.trim()).collect();
+                    let server = server_actor_address.clone();
+                    let neighbor = right_neighbor_copy.clone();
+                    info!("Read from neigbor {:?}",parts);
+                    match parts[0]{
+                        "TOKEN" => {
 
-                        if *guard <= 0 {
-                            empty = true;
+                            let mut empty = false;
+                            let guard = connections.lock().await;
+    
+                            if *guard <= 0 {
+                                empty = true;
+                            }
+                        
+                            if empty {
+                                debug!("No accounts, sending token to next server");
+                                let right_neighbor = right_neighbor_copy.clone();
+                                //sync_next(server, neighbor).await;
+                                //right_neighbor.send(SendToken {}).await;
+                            } else {
+                                let mut t = token.lock().await;
+                                t.avaliable();
+                                info!("Token is avaliable");
+                                notify_copy.notify_waiters();
+                            }
                         }
-                    
-                        if empty {
-                            let right_neighbor = right_neighbor_copy.clone();
-                            sync_next(server, neighbor).await;
-                            right_neighbor.send(SendToken {}).await;
-                        } else {
-                            let mut t = token.lock().await;
-                            t.avaliable();
-                            info!("Token is avaliable");
-                            notify_copy.notify_waiters();
+                        "SYNC" => {
+                            let msg = SyncAccount {
+                                customer_id: parts[1].parse::<u32>().expect(""),
+                                points: parts[2].parse::<u32>().expect("")
+                            };
+                            server_actor_address.send(msg).await.unwrap();
+                            info!("Sync account {} with {} points", parts[1], parts[2]);
+                        }
+                        _ => {
+                            error!("Unkown");
+                            break;
                         }
                     }
-                    "SYNC" => {
-                        let msg = SyncAccount {
-                            customer_id: parts[1].parse::<u32>().expect(""),
-                            points: parts[2].parse::<u32>().expect("")
-                        };
-                        server_actor_address.send(msg).await.unwrap();
-                        info!("Sync account {} with {} points", parts[1], parts[2]);
-                    }
-                    _ => {
-                        error!("Unkown");
-                        break;
-                    }
+                    line.clear();
                 }
             }
             Err(_) => {
