@@ -84,8 +84,8 @@ impl Handler<Reconnect> for NeighborRight {
 impl Handler<ConfigStream> for NeighborRight {
     type Result = ();
     fn handle(&mut self, mut msg: ConfigStream, _ctx: &mut SyncContext<Self>) -> Self::Result {
-        msg.stream.write("SH\n".as_bytes()).expect("Falla la escritura tcp");
-        self.connection = Connection::new(Some(msg.stream));
+        //msg.stream.write_all("SH \n".as_bytes()).expect("Falla la escritura tcp");
+        //self.connection = Connection::new(Some(msg.stream));
         info!("Sending HELLO SERVER to neighbor");
     }
 }

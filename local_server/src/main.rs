@@ -3,6 +3,7 @@ use local_server::structs::connection::Connection;
 use local_server::structs::neighbor_right::NeighborRight;
 use local_server::structs::token::Token;
 use log::{error, info, warn};
+use async_std::task;
 
 use std::io::{Read, Write};
 use std::sync::{Arc};
@@ -37,19 +38,22 @@ async fn main() {
     
     let listener = TcpListener::bind(format!("127.0.0.1:888{}", id)).await.expect("Failed to bind listener");
     
-    let server_actor_address = SyncArbiter::start(1, || LocalServer::new().unwrap());
-    let right_neighbor_address = SyncArbiter::start(1, || NeighborRight::new(Connection::new(None)));
+    let server_actor_address = SyncArbiter::start(2, || LocalServer::new().unwrap());
+    let right_neighbor_address = SyncArbiter::start(2, || NeighborRight::new(Connection::new(None)));
     let token: Arc<Mutex<Token>> = Arc::new(Mutex::new(Token::new()));
-    let notify:Arc<Notify> = Arc::new(Notify::new());
+    let notify: Arc<Notify> = Arc::new(Notify::new());
     let connections = Arc::new(Mutex::new(0));
 
     
     let clone = right_neighbor_address.clone();
     tokio::spawn(async move {
+        //task::sleep(Duration::from_secs(5)).await;
         thread::sleep(Duration::from_secs(5));
-        let conn = connect_right_neigbor(id,2).unwrap();
-        clone.send(ConfigStream {stream:conn}).await.expect("Could not config new stream");
-    });
+        let mut conn = connect_right_neigbor(id,2).await.unwrap();
+        conn.write_all("SH".as_bytes()).await.expect("Falla la escritura tcp");
+        //clone.send(ConfigStream {stream:conn}).await.expect("Could not config new stream");
+        info!("Sending HELLO SERVER to neighbor");
+    }).await.unwrap();
     
     
     info!("Waiting for connections!");
@@ -408,7 +412,7 @@ async fn sync_next(server_address: Addr<LocalServer>, rigth_neighbor_addr: Addr<
         Err(_) => error!("Fail trying to sync next server"),
     }
 }
-fn connect_right_neigbor(id: u8, servers: u8) -> Result<net::TcpStream, String> {
+async fn connect_right_neigbor(id: u8, servers: u8) -> Result<TcpStream, String> {
     let socket = if id == servers {
         "127.0.0.1:8881".to_string()
     } else {
@@ -417,7 +421,7 @@ fn connect_right_neigbor(id: u8, servers: u8) -> Result<net::TcpStream, String> 
 
     let mut attemps = 0;
     while attemps < 5 {
-        match net::TcpStream::connect(socket.clone()) {
+        match TcpStream::connect(socket.clone()).await {
             Ok(s) => {
                 info!("RIGHT NEIGHBOR - connected to {:?}", socket );
                 return Ok(s);

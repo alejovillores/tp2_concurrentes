@@ -1,7 +1,8 @@
 use std::{
-    net::TcpStream,
     sync::{Arc, Mutex},
 };
+
+use tokio::net::{TcpStream};
 
 use actix::Message;
 
