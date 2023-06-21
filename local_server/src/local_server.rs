@@ -183,14 +183,14 @@ impl Handler<SyncNextServer> for LocalServer {
     type Result = Vec<Account>;
 
     fn handle(&mut self, _msg: SyncNextServer, _ctx: &mut Self::Context) -> Self::Result {
-        let mut accounts: Vec<Account> = vec![];
+        let mut accounts = vec![];
         for (_, account) in self.accounts.iter() {
                 let mut account_dup =
                     Account::new(account.customer_id).expect("No se pudo crear el account");
                 account_dup.points = account.points;
                 accounts.push(account_dup);
         }
-        error!("cuentas {:?} a enviar", accounts);
+        info!("Sync next accounts: {:?} a enviar", accounts);
         accounts
     }
 }
