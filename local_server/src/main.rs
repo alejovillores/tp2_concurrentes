@@ -1,24 +1,20 @@
 use actix::{Addr, SyncArbiter};
-use async_std::task;
-use local_server::structs::connection::Connection;
-use local_server::structs::neighbor_right::NeighborRight;
 use local_server::structs::token::Token;
 use log::{debug, error, info, warn};
 use tokio::join;
 
-use std::io::{Read, Write};
 use std::sync::Arc;
 use std::time::Duration;
 
 use local_server::structs::messages::{
-    ConfigStream, SendSync, SendToken, SyncAccount, SyncNextServer, UnblockPoints,
+    SyncAccount, SyncNextServer, UnblockPoints,
 };
 use local_server::{
     local_server::LocalServer,
     structs::messages::{AddPoints, BlockPoints, SubtractPoints},
 };
-use std::{env, net, thread};
-use tokio::io::{self, split, AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
+use std::{env , thread};
+use tokio::io::{self, split, AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc::{self, Receiver, Sender};
 use tokio::sync::{Mutex, Notify};
@@ -120,7 +116,7 @@ async fn handle_connection(
             match line.as_str() {
                 "CH\n" => {
                     info!("Coffee Connection");
-                    //handle_coffe_connection(reader, w,token_copy, notify_copy, connections, server_actor_address, right_neighbor_copy).await;
+                    handle_coffe_connection(reader, w,token_copy, notify_copy, connections, server_actor_address, sender).await;
                 }
                 "SH\n" => {
                     info!("Server Connection");

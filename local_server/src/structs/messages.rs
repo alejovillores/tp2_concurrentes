@@ -1,13 +1,5 @@
-use std::{
-    sync::{Arc, Mutex},
-};
-
 use tokio::net::{TcpStream};
-
 use actix::Message;
-
-use super::token::Token;
-
 use super::account::Account;
 
 #[derive(Message, Debug)]
