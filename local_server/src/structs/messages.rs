@@ -1,6 +1,6 @@
-use tokio::net::{TcpStream};
-use actix::Message;
 use super::account::Account;
+use actix::Message;
+use tokio::net::TcpStream;
 
 #[derive(Message, Debug)]
 #[rtype(result = "Result<(),()>")]

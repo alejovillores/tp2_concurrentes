@@ -68,8 +68,14 @@ async fn main() {
     let addr = coffee_maker_actor.start();
     info!("CoffeeMaker actor is active");
 
-    if let Ok(mut stream) = TcpStream::connect(format!("127.0.0.1:808{}", id)) {
+    if let Ok(mut stream) = TcpStream::connect(format!("127.0.0.1:888{}", id)) {
         info!("Connected to the server!");
+        let response_message = "CH\n".to_string();
+        match send(&mut stream, response_message.clone()) {
+            Ok(_) => info!("Send {:?} message to Server", response_message),
+            Err(e) => error!("{}", e),
+        }
+
         loop {
             let mut next_order;
             thread::sleep(Duration::from_secs(10));
@@ -106,7 +112,7 @@ async fn main() {
                     .unwrap()
                 {
                     let response_message = format!(
-                        "RES, {}, {}, {} \n",
+                        "{}, {}, {} \n",
                         next_order.operation, next_order.account_id, next_order.coffee_points
                     );
                     match send(&mut stream, response_message.clone()) {
@@ -127,8 +133,9 @@ async fn main() {
                         }
                         Err(e) => error!("{}", e),
                     }
+                } else {
+                    info!("The ADD operation could not be performed");
                 }
-                info!("The ADD operation could not be performed");
             } else {
                 // 1. Ask for points
                 let request_message = format!(
@@ -177,7 +184,7 @@ async fn main() {
                 }
                 // 3. Send results
                 let response_message = format!(
-                    "RES, {}, {}, {} \n",
+                    "{}, {}, {} \n",
                     next_order.operation, next_order.account_id, next_order.coffee_points
                 );
                 match send(&mut stream, response_message.clone()) {

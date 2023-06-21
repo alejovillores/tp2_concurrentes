@@ -14,7 +14,6 @@ impl Token {
         self.status
     }
 
-
     pub fn avaliable(&mut self) {
         self.status = true;
     }
@@ -22,7 +21,6 @@ impl Token {
     pub fn not_avaliable(&mut self) {
         self.status = false;
     }
-
 }
 
 impl Default for Token {

@@ -1,3 +1,5 @@
+use log::info;
+
 #[allow(dead_code)]
 #[derive(Debug)]
 pub struct Account {
@@ -22,6 +24,10 @@ impl Account {
     }
 
     pub fn register_added_points(&mut self) {
+        info!(
+            "Registering {} points to account id: {}",
+            self.points_to_add, self.customer_id
+        );
         self.points += self.points_to_add;
         self.points_to_add = 0;
     }

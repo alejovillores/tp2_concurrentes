@@ -6,14 +6,12 @@ use tokio::join;
 use std::sync::Arc;
 use std::time::Duration;
 
-use local_server::structs::messages::{
-    SyncAccount, SyncNextServer, UnblockPoints,
-};
+use local_server::structs::messages::{SyncAccount, SyncNextServer, UnblockPoints};
 use local_server::{
     local_server::LocalServer,
     structs::messages::{AddPoints, BlockPoints, SubtractPoints},
 };
-use std::{env , thread};
+use std::{env, thread};
 use tokio::io::{self, split, AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc::{self, Receiver, Sender};
@@ -116,7 +114,16 @@ async fn handle_connection(
             match line.as_str() {
                 "CH\n" => {
                     info!("Coffee Connection");
-                    handle_coffe_connection(reader, w,token_copy, notify_copy, connections, server_actor_address, sender).await;
+                    handle_coffe_connection(
+                        reader,
+                        w,
+                        token_copy,
+                        notify_copy,
+                        connections,
+                        server_actor_address,
+                        sender,
+                    )
+                    .await;
                 }
                 "SH\n" => {
                     info!("Server Connection");
@@ -171,7 +178,7 @@ async fn handle_server_connection(
 
                             if empty {
                                 thread::sleep(Duration::from_secs(3));
-                                debug!("Sync next server");
+                                debug!("No REQ messages next server");
                                 sync_next(server, sender_copy).await;
                                 debug!("Send token to next server");
                                 sender
@@ -179,6 +186,7 @@ async fn handle_server_connection(
                                     .await
                                     .expect("could not send token through channel");
                             } else {
+                                info!("Token should be avaliable");
                                 let mut t = token.lock().await;
                                 t.avaliable();
                                 info!("Token is avaliable");
@@ -218,10 +226,8 @@ async fn handle_coffe_connection(
     server_actor_address: Addr<LocalServer>,
     sender: Sender<String>,
 ) {
-    let mut c = connections.lock().await;
-    *c += 1;
-
     let mut last_operation: Option<String> = None;
+    debug!("waiting for messages from coffee");
     loop {
         let token = token_copy.clone();
         let notify = notify_copy.clone();
@@ -244,6 +250,11 @@ async fn handle_coffe_connection(
                             res
                         }
                         "REQ" => {
+                            {
+                                let mut c = connections.lock().await;
+                                *c += 1;
+                            }
+
                             let customer_id = parts[1]
                                 .parse::<u32>()
                                 .expect("Could not parse customer_id");
@@ -253,6 +264,7 @@ async fn handle_coffe_connection(
 
                             let res = handle_req_message(server, notify, customer_id, points).await;
                             last_operation = Some(res.clone());
+                            debug!("last_operation: {:?}", last_operation);
                             res
                         }
                         "SUBS" => {
@@ -272,6 +284,10 @@ async fn handle_coffe_connection(
                                 points,
                             )
                             .await;
+                            {
+                                let mut c = connections.lock().await;
+                                *c -= 1;
+                            }
                             res
                         }
                         "UNBL" => {
@@ -291,6 +307,10 @@ async fn handle_coffe_connection(
                                 points,
                             )
                             .await;
+                            {
+                                let mut c = connections.lock().await;
+                                *c -= 1;
+                            }
 
                             res
                         }
@@ -300,6 +320,7 @@ async fn handle_coffe_connection(
                             res
                         }
                     };
+                    info!("Writting response {:?}", response);
                     w.write(response.as_bytes()).await.unwrap();
                     if response.as_str() == "UNK" {
                         break;
@@ -312,8 +333,6 @@ async fn handle_coffe_connection(
             }
         };
     }
-    let mut c = connections.lock().await;
-    *c -= 1;
 }
 
 async fn handle_add_message(server: Addr<LocalServer>, customer_id: u32, points: u32) -> String {
@@ -324,7 +343,7 @@ async fn handle_add_message(server: Addr<LocalServer>, customer_id: u32, points:
     };
     let _res = server.send(msg).await.unwrap();
 
-    "ACK".to_string()
+    "ACK\n".to_string()
 }
 
 async fn handle_unblock_message(
@@ -357,26 +376,30 @@ async fn handle_unblock_message(
                                     .send(String::from("TOKEN\n"))
                                     .await
                                     .expect("could not send token from unblock message");
-                                return "ACK".to_string();
+                                return "ACK\n".to_string();
                             }
                             b if b > 0 => {
                                 info!("UNBL points substracted");
-                                return "ACK".to_string();
+                                return "ACK\n".to_string();
                             }
-                            _ => "NOT ACK".to_string(),
+                            _ => "NOT ACK\n".to_string(),
                         },
-                        Err(_) => "NOT ACK".to_string(),
+                        Err(_) => "NOT ACK\n".to_string(),
                     },
-                    Err(_) => "NOT ACK".to_string(),
+                    Err(_) => "NOT ACK\n".to_string(),
                 }
             } else {
-                "NOT ACK".to_string()
+                "NOT ACK\n".to_string()
             }
         }
-        None => "NOT ACK".to_string(),
+        None => {
+            error!("NO operation result = OK");
+            "NOT ACK".to_string()
+        }
     };
     response
 }
+
 async fn handle_subs_message(
     server: Addr<LocalServer>,
     neighbor: Sender<String>,
@@ -388,7 +411,7 @@ async fn handle_subs_message(
     info!("SUBS received");
     let response = match last_operation {
         Some(operation) => {
-            if operation == "OK" {
+            if operation == "OK\n" {
                 let msg = SubtractPoints {
                     customer_id,
                     points,
@@ -406,23 +429,36 @@ async fn handle_subs_message(
                                     .send("TOKEN\n".to_string())
                                     .await
                                     .expect("Could not send token");
-                                return "ACK".to_string();
+                                return "ACK\n".to_string();
                             }
                             b if b > 0 => {
                                 info!("SUBS points substracted");
-                                return "ACK".to_string();
+                                return "ACK\n".to_string();
                             }
-                            _ => "NOT ACK".to_string(),
+                            _ => {
+                                error!("Invalid blocked_points_left");
+                                "NOT ACK\n".to_string()
+                            }
                         },
-                        Err(_) => "NOT ACK".to_string(),
+                        Err(_) => {
+                            error!("Fail sanding subs to server actor");
+                            "NOT ACK\n".to_string()
+                        }
                     },
-                    Err(_) => "NOT ACK".to_string(),
+                    Err(_) => {
+                        error!("Fail sanding subs to server actor");
+                        "NOT ACK\n".to_string()
+                    }
                 }
             } else {
-                "NOT ACK".to_string()
+                error!("NO operation result = OK");
+                "NOT ACK\n".to_string()
             }
         }
-        None => "NOT ACK".to_string(),
+        None => {
+            error!("NO operation result = OK");
+            "NOT ACK\n".to_string()
+        }
     };
     response
 }
@@ -433,6 +469,7 @@ async fn handle_req_message(
     customer_id: u32,
     points: u32,
 ) -> String {
+    info!("REQ message!");
     notify.notified().await;
     let msg = BlockPoints {
         customer_id,
@@ -440,14 +477,14 @@ async fn handle_req_message(
     };
     match server.send(msg).await.unwrap() {
         Ok(_) => {
-            return "OK".to_string();
+            return "OK\n".to_string();
         }
         Err(_) => {
             error!(
                 "Error trying to block {} points for account {}",
                 points, customer_id
             );
-            return "NOT OK".to_string();
+            return "NOT OK\n".to_string();
         }
     }
 }
@@ -461,7 +498,10 @@ async fn sync_next(server_address: Addr<LocalServer>, sender: Sender<String>) {
                     "Sync {} to customer id {}",
                     account.customer_id, account.points
                 );
-                sender.send(message).await;
+                sender
+                    .send(message)
+                    .await
+                    .expect("Could not send syc message through channel");
                 thread::sleep(Duration::from_secs(1));
             }
             info!("Sync accounts to next neighbor finished");
@@ -469,6 +509,7 @@ async fn sync_next(server_address: Addr<LocalServer>, sender: Sender<String>) {
         Err(_) => error!("Fail trying to sync next server"),
     }
 }
+
 async fn connect_right_neigbor(id: u8, servers: u8) -> Result<TcpStream, String> {
     let socket = if id == servers {
         "127.0.0.1:8881".to_string()
