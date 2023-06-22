@@ -12,7 +12,8 @@ use local_server::{
     structs::messages::{AddPoints, BlockPoints, SubtractPoints},
 };
 use std::{env, thread};
-use tokio::io::{self, split, AsyncBufReadExt, AsyncWriteExt, BufReader};
+use mockall::PredicateBoxExt;
+use tokio::io::{self, split, AsyncBufReadExt, AsyncWriteExt, BufReader, AsyncReadExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc::{self, Receiver, Sender};
 use tokio::sync::{Mutex, Notify};
@@ -41,23 +42,7 @@ async fn main() {
     let (tx, mut rx): (Sender<String>, Receiver<String>) = mpsc::channel(1);
 
     let rn = tokio::spawn(async move {
-        let mut conn = connect_right_neigbor(id, 2).await.unwrap();
-        conn.write_all(b"SH\n")
-            .await
-            .expect("Falla la escritura tcp");
-        if id == 1 {
-            debug!("Sending token to next server");
-            conn.write_all(b"TOKEN\n")
-                .await
-                .expect("could not send token");
-        }
-        debug!("Waiting from channel");
-        while let Some(message) = rx.recv().await {
-            debug!("GOT = {}", message);
-            conn.write_all(message.as_bytes())
-                .await
-                .expect("Falla la escritura tcp");
-        }
+        handle_right_neighbor(id, 3, rx).await;
     });
 
     let server = tokio::spawn(async move {
@@ -92,6 +77,64 @@ async fn main() {
     });
 
     join!(rn, server);
+}
+
+async fn handle_right_neighbor(mut id: u8, mut servers: u8, mut rx: Receiver<String>) {
+    let mut last_message = String::new();
+    loop {
+        let mut conn = connect_right_neigbor(id, servers).await.unwrap();
+        conn.write_all(b"SH\n")
+            .await
+            .expect("Falla la escritura tcp");
+        if id == 1 && last_message.is_empty(){
+            debug!("Sending token to next server");
+            conn.write_all(b"TOKEN\n")
+                .await
+                .expect("could not send token");
+        }
+        if !last_message.is_empty() {
+            conn.write_all(last_message.as_bytes()).await.expect("Could not send last message");
+        }
+        debug!("Waiting from channel");
+        let mut disconnected = false;
+        while let Some(message) = rx.recv().await {
+            last_message = message.clone();
+            debug!("GOT = {}", message);
+            match conn.write_all(message.as_bytes()).await {
+                Ok(_) => {
+                    let mut buffer = [0; 1024];
+                    debug!("Enviado. Esperando respuesta");
+                    match conn.read(&mut buffer).await {
+                        Ok(bytes_read) => {
+                            if bytes_read == 0 {
+                                error!("Server disconnected");
+                                disconnected = true;
+                                break;
+                            }
+                            else {
+                                debug!("Mensaje enviado");
+                            }
+                        }
+                        Err(e) => {
+                            error!("Can't get answer from server: {}", e);
+                            disconnected = true;
+                            break;
+                        }
+                    }
+                }
+                Err(_) => {
+                    debug!("Falla la escritura tcp");
+                    error!("Server disconnecteed");
+                    disconnected = true;
+                    break;
+                }
+            }
+        }
+        if disconnected {
+            info!("Trying to reconnect");
+            servers -= 1;
+        }
+    }
 }
 
 async fn handle_connection(
@@ -129,6 +172,7 @@ async fn handle_connection(
                     info!("Server Connection");
                     handle_server_connection(
                         reader,
+                        w,
                         token_copy,
                         notify_copy,
                         connections,
@@ -150,6 +194,7 @@ async fn handle_connection(
 
 async fn handle_server_connection(
     mut reader: BufReader<io::ReadHalf<TcpStream>>,
+    mut w: io::WriteHalf<TcpStream>,
     token_copy: Arc<Mutex<Token>>,
     notify_copy: Arc<Notify>,
     connections: Arc<Mutex<i32>>,
@@ -162,6 +207,8 @@ async fn handle_server_connection(
         match reader.read_line(&mut line).await {
             Ok(u) => {
                 if u > 0 {
+                    let response = "ACK\n";
+                    w.write_all(response.as_bytes()).await.expect("Error writing tcp");
                     let token = token_copy.clone();
                     let parts: Vec<&str> = line.split(',').map(|s| s.trim()).collect();
                     let server = server_actor_address.clone();
@@ -514,9 +561,13 @@ async fn connect_right_neigbor(id: u8, servers: u8) -> Result<TcpStream, String>
     let socket = if id == servers {
         "127.0.0.1:8881".to_string()
     } else {
-        format!("127.0.0.1:888{}", (id + 1))
+        let mut port_last_number = id;
+        if id > servers {
+            port_last_number = 1;
+        }
+        format!("127.0.0.1:888{}", (port_last_number + 1))
     };
-
+    info!("Trying to connect {:?}", socket);
     let mut attemps = 0;
     while attemps < 5 {
         match TcpStream::connect(socket.clone()).await {
