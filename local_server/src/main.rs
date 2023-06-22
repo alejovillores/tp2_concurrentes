@@ -81,8 +81,11 @@ async fn main() {
 
 async fn handle_right_neighbor(mut id: u8, mut servers: u8, mut rx: Receiver<String>) {
     let mut last_message = String::new();
+    let mut port_last_number = id;
+    let mut disconnected = false;
     loop {
-        let mut conn = connect_right_neigbor(id, servers).await.unwrap();
+        info!("connecting to {}", port_last_number);
+        let mut conn = connect_right_neigbor(port_last_number, servers, disconnected).await.unwrap();
         conn.write_all(b"SH\n")
             .await
             .expect("Falla la escritura tcp");
@@ -96,7 +99,7 @@ async fn handle_right_neighbor(mut id: u8, mut servers: u8, mut rx: Receiver<Str
             conn.write_all(last_message.as_bytes()).await.expect("Could not send last message");
         }
         debug!("Waiting from channel");
-        let mut disconnected = false;
+        disconnected = false;
         while let Some(message) = rx.recv().await {
             last_message = message.clone();
             debug!("GOT = {}", message);
@@ -126,6 +129,7 @@ async fn handle_right_neighbor(mut id: u8, mut servers: u8, mut rx: Receiver<Str
                     debug!("Falla la escritura tcp");
                     error!("Server disconnecteed");
                     disconnected = true;
+                    
                     break;
                 }
             }
@@ -133,6 +137,17 @@ async fn handle_right_neighbor(mut id: u8, mut servers: u8, mut rx: Receiver<Str
         if disconnected {
             info!("Trying to reconnect");
             servers -= 1;
+            port_last_number = if id == servers {
+                id // soy el dos
+            } else if id > servers{
+                1
+            } else {
+                id + 1
+            };
+            //3 reconecta bien
+            // 1 y 2 RECONECTAN CONSIGO MISMO
+            //
+
         }
     }
 }
@@ -557,16 +572,25 @@ async fn sync_next(server_address: Addr<LocalServer>, sender: Sender<String>) {
     }
 }
 
-async fn connect_right_neigbor(id: u8, servers: u8) -> Result<TcpStream, String> {
-    let socket = if id == servers {
-        "127.0.0.1:8881".to_string()
+fn calculate_socket_string(id: u8, servers: u8, is_reconnecting: bool) -> String {
+    if id == servers {
+        if is_reconnecting {
+            format!("127.0.0.1:888{}", (id + 1))
+        } else {
+            "127.0.0.1:8881".to_string()
+        }
     } else {
-        let mut port_last_number = id;
+        let mut port_last_number;
+        port_last_number = id;
         if id > servers {
             port_last_number = 1;
         }
         format!("127.0.0.1:888{}", (port_last_number + 1))
-    };
+    }
+}
+
+async fn connect_right_neigbor(id: u8, servers: u8, is_reconnecting: bool) -> Result<TcpStream, String> {
+    let socket = calculate_socket_string(id, servers, is_reconnecting);
     info!("Trying to connect {:?}", socket);
     let mut attemps = 0;
     while attemps < 5 {
