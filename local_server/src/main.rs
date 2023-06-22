@@ -81,8 +81,9 @@ async fn main() {
 
 async fn handle_right_neighbor(mut id: u8, mut servers: u8, mut rx: Receiver<String>) {
     let mut last_message = String::new();
+    let mut port_last_number = id;
     loop {
-        let mut conn = connect_right_neigbor(id, servers).await.unwrap();
+        let mut conn = connect_right_neigbor(id, servers, &mut port_last_number).await.unwrap();
         conn.write_all(b"SH\n")
             .await
             .expect("Falla la escritura tcp");
@@ -557,16 +558,13 @@ async fn sync_next(server_address: Addr<LocalServer>, sender: Sender<String>) {
     }
 }
 
-async fn connect_right_neigbor(id: u8, servers: u8) -> Result<TcpStream, String> {
-    let socket = if id == servers {
-        "127.0.0.1:8881".to_string()
+async fn connect_right_neigbor(id: u8, servers: u8, port_last_number: &mut u8) -> Result<TcpStream, String> {
+    if id == servers {
+        *port_last_number = 1;
     } else {
-        let mut port_last_number = id;
-        if id > servers {
-            port_last_number = 1;
-        }
-        format!("127.0.0.1:888{}", (port_last_number + 1))
-    };
+        *port_last_number += 1;
+    }
+    let socket = format!("127.0.0.1:888{}", port_last_number);
     info!("Trying to connect {:?}", socket);
     let mut attemps = 0;
     while attemps < 5 {
