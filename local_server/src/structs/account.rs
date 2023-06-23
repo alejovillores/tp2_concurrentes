@@ -24,16 +24,12 @@ impl Account {
     }
 
     pub fn register_added_points(&mut self) {
-        if self.points_to_add > 0 {
-            info!(
-                "Registering {} points to account id: {}",
-                self.points_to_add, self.customer_id
-            );
-            self.points += self.points_to_add;
-            self.points_to_add = 0;
-        } else {
-            info!("No points to add to account id: {}", self.customer_id)
-        }
+        info!(
+            "Registering {} points to account id: {}",
+            self.points_to_add, self.customer_id
+        );
+        self.points += self.points_to_add;
+        self.points_to_add = 0;
     }
 
     pub fn subtract_points(&mut self, points: u32) -> Result<(), String> {
