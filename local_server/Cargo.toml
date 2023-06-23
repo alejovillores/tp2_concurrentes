@@ -3,6 +3,11 @@ name = "local_server"
 version = "0.1.0"
 edition = "2021"
 
+
+[[bin]]
+name = "controller"
+path = "bin/controller.rs"
+
 [dependencies]
 actix = "0.13.0"
 actix-rt = "2.8.0"

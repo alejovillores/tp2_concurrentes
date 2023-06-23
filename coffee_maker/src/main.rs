@@ -17,9 +17,6 @@ use coffee_maker::{
     utils::{order_parser::OrderParser, probablity_calculator::ProbabilityCalculator},
 };
 
-// From console next
-const PROBABLITY: f64 = 1.0;
-
 fn send(stream: &mut TcpStream, message: String) -> Result<(), String> {
     match stream.write(message.as_bytes()) {
         Ok(_) => match stream.flush() {
