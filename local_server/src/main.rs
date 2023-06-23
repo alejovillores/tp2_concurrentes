@@ -132,8 +132,14 @@ async fn handle_right_neighbor(
                 warn!("Recovery from sender");
                 last_message.clear();
                 let id_recovery = parts[1].parse::<u8>().expect("Could not parse number");
-                port_last_number = id_recovery;
+                info!("recover port {}", id_recovery);
                 servers += 1;
+                //FIXME:
+                if id < servers {
+                    port_last_number = id;
+                } else {
+                    port_last_number = id_recovery;
+                }
                 break;
             }
             else{
