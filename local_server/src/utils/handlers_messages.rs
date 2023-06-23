@@ -1,5 +1,5 @@
 pub mod handlers_messager {
-    use crate::local_server::{self, LocalServer};
+    use crate::local_server::{LocalServer};
     use crate::structs::token::Token;
     use actix::Addr;
     use log::{debug, error, info, warn};
@@ -10,12 +10,10 @@ pub mod handlers_messager {
     use crate::structs::messages::{
         AddPoints, BlockPoints, SubtractPoints, SyncAccount, SyncNextServer, UnblockPoints,
     };
-
-    use mockall::PredicateBoxExt;
-    use std::{env, thread};
-    use tokio::io::{self, split, AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
-    use tokio::net::{TcpListener, TcpStream};
-    use tokio::sync::mpsc::{self, Receiver, Sender};
+    use std::{thread};
+    use tokio::io::{self, AsyncBufReadExt, AsyncWriteExt, BufReader};
+    use tokio::net::TcpStream;
+    use tokio::sync::mpsc::Sender;
     use tokio::sync::{Mutex, Notify};
 
     pub async fn handle_controller_connection(
@@ -24,6 +22,7 @@ pub mod handlers_messager {
         sender: Sender<String>,
         state: Arc<Mutex<bool>>,
         id: u8,
+        servers:u8
     ) {
         debug!("Reading from neighbor");
         loop {
@@ -44,8 +43,12 @@ pub mod handlers_messager {
                                 *s = false;
                                 warn!("KILL received - Now this server is offline");
                             }
-                            "RECOVERY" => {
-                                debug!("RECOVERY NOT IMPLEMENTED YET");
+                            "UP" => {
+                                let mut s = state.lock().await;
+                                *s = true;
+                                recovery(id,servers).await;
+                                let message = format!("RECOVERY,{}",id);
+                                sender_copy.send(message).await.expect("could not send recovery message");
                             }
                             _ => {
                                 error!("Unkown");
@@ -74,6 +77,7 @@ pub mod handlers_messager {
         state: Arc<Mutex<bool>>,
     ) {
         debug!("Reading from neighbor");
+        let mut cont = 0;
         loop {
             let mut line: String = String::new();
             match reader.read_line(&mut line).await {
@@ -81,17 +85,17 @@ pub mod handlers_messager {
                     let mut alive = true;
                     {
                         let s = state.lock().await;
+                        warn!("EL LOCK LO TIENE EL SERVER");
+
                         if matches!(*s,false) {
                             alive = false
                         }
                         debug!("Reading mutex");
                     }
+                    debug!("alive is {:?}",alive);
                     if alive {
                         if u > 0 {
-                            let response = "ACK\n";
-                            w.write_all(response.as_bytes())
-                                .await
-                                .expect("Error writing tcp");
+                            debug!("Send ack");
                             let token = token_copy.clone();
                             let parts: Vec<&str> = line.split(',').map(|s| s.trim()).collect();
                             let server = server_actor_address.clone();
@@ -99,6 +103,11 @@ pub mod handlers_messager {
                             debug!("Read from neigbor {:?}", parts);
                             match parts[0] {
                                 "TOKEN" => {
+                                    cont +=1;
+                                    let response = format!("OK,{}\n",cont);
+                                    w.write_all(response.as_bytes())
+                                    .await
+                                    .expect("Error writing tcp");
                                     let mut empty = false;
                                     let guard = connections.lock().await;
     
@@ -124,6 +133,11 @@ pub mod handlers_messager {
                                     }
                                 }
                                 "SYNC" => {
+                                    cont +=1;
+                                    let response = format!("OK,{}\n",cont);
+                                    w.write_all(response.as_bytes())
+                                    .await
+                                    .expect("Error writing tcp");
                                     let msg = SyncAccount {
                                         customer_id: parts[1].parse::<u32>().expect(""),
                                         points: parts[2].parse::<u32>().expect(""),
@@ -140,6 +154,7 @@ pub mod handlers_messager {
                         }
                     }
                     else{
+                        error!("Ya estoy aca");
                         break;
                     }
                 }
@@ -446,6 +461,29 @@ pub mod handlers_messager {
                 info!("Sync accounts to next neighbor finished");
             }
             Err(_) => error!("Fail trying to sync next server"),
+        }
+    }
+
+    async fn recovery(id: u8,servers:u8) {
+        let mut port = id - 1;
+        if id == 1 {
+            port = servers
+        }
+        let socket = format!("127.0.0.1:888{}",port);
+        let message = format!("RECOVERY,{}",id);
+
+        match TcpStream::connect(socket).await {
+            Ok(mut s) => {
+                match s.write_all(message.as_bytes()).await {
+                    Ok(_) => {
+                        debug!("Send RECOVERY to left neighbor");
+                    },
+                    Err(_) => {
+                        error!("Error sending RECOVERY to left neighbor");
+                    },
+                }
+            },
+            Err(_) => todo!(),
         }
     }
 }

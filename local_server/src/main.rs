@@ -78,7 +78,7 @@ async fn main() {
 }
 
 async fn handle_right_neighbor(
-    mut id: u8,
+    id: u8,
     mut servers: u8,
     mut rx: Receiver<String>,
     state: Arc<Mutex<bool>>,
@@ -89,14 +89,20 @@ async fn handle_right_neighbor(
         let mut conn = connect_right_neigbor(id, servers, &mut port_last_number)
             .await
             .unwrap();
+        
         conn.write_all(b"SH\n")
             .await
             .expect("Falla la escritura tcp");
+
         if id == 1 && last_message.is_empty() {
             debug!("Sending token to next server");
             conn.write_all(b"TOKEN\n")
                 .await
                 .expect("could not send token");
+            let mut buffer = [0; 1024];
+            conn.read(&mut buffer).await;
+            let res = String::from_utf8_lossy(&buffer);
+            debug!("1er BUFFER:{}",res);
         }
         if !last_message.is_empty() {
             conn.write_all(last_message.as_bytes())
@@ -105,24 +111,41 @@ async fn handle_right_neighbor(
         }
         debug!("Waiting from channel");
         let mut disconnected = false;
-        let mut alive = true;
-        {
-            let s = state.lock().await;
-            if !*s {
-                alive = false
+        
+        let mut alive: bool = true;
+        while let Some(message) = rx.recv().await {
+            {
+                let s = state.lock().await;
+                warn!("EL LOCK LO TIENE EL SENDER");
+                if !*s {
+                    alive = false
+                }
             }
-        }
-        if alive {
-            while let Some(message) = rx.recv().await {
-                last_message = message.clone();
-                debug!("GOT = {}", message);
+            if matches!(alive,false) {
+                conn.shutdown();
+                break;
+            }
+            last_message = message.clone();
+            debug!("GOT = {}", message);
+            let parts: Vec<&str> = message.split(',').map(|s| s.trim()).collect();
+            if parts[0] == "RECOVERY" {
+                warn!("Recovery from sender");
+                last_message.clear();
+                let id_recovery = parts[1].parse::<u8>().expect("Could not parse number");
+                port_last_number = id_recovery;
+                servers += 1;
+                break;
+            }
+            else{
                 match conn.write_all(message.as_bytes()).await {
                     Ok(_) => {
-                        let mut buffer = [0; 1024];
                         debug!("Enviado. Esperando respuesta");
+                        let mut buffer = [0; 1024];
                         match conn.read(&mut buffer).await {
-                            Ok(bytes_read) => {
-                                if bytes_read == 0 {
+                            Ok(u) => {
+                                let res = String::from_utf8_lossy(&buffer);
+                                debug!("BUFFER:{}",res);
+                                if  u == 0 {
                                     error!("Server disconnected");
                                     disconnected = true;
                                     break;
@@ -145,16 +168,14 @@ async fn handle_right_neighbor(
                     }
                 }
             }
+            }
             if disconnected {
                 info!("Trying to reconnect");
                 servers -= 1;
             }
         }
-        else{
-            conn.shutdown().await;
-        }
-    }
 }
+
 
 async fn handle_connection(
     tcp_connection: TcpStream,
@@ -175,8 +196,9 @@ async fn handle_connection(
     match reader.read_line(&mut line).await {
         Ok(_u) => {
             info!("line {} ", line);
-            match line.as_str() {
-                "CH\n" => {
+            let parts: Vec<&str> = line.split(',').map(|s| s.trim()).collect();
+            match parts[0] {
+                "CH" => {
                     info!("Coffee Connection");
                     handle_coffe_connection(
                         reader,
@@ -189,7 +211,7 @@ async fn handle_connection(
                     )
                     .await;
                 }
-                "SH\n" => {
+                "SH" => {
                     info!("Server Connection");
                     handle_server_connection(
                         reader,
@@ -203,8 +225,11 @@ async fn handle_connection(
                     )
                     .await;
                 }
-                "CTRL\n" => {
-                    handle_controller_connection(reader, w, sender, state, id).await;
+                "CTRL" => {
+                    handle_controller_connection(reader, w, sender, state, id,2).await;
+                }
+                "RECOVERY" => {
+                    sender.send(line).await.expect("fail sending recovery to sender");
                 }
                 _ => {
                     error!("Unknown Connection type ");
