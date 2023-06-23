@@ -75,18 +75,18 @@ pub mod handlers_messager {
     ) {
         debug!("Reading from neighbor");
         loop {
-            let mut alive = true;
-            {
-                let s = state.lock().await;
-                if !*s {
-                    alive = false
-                }
-                debug!("Reading mutex");
-            }
-            if alive {
-                let mut line: String = String::new();
-                match reader.read_line(&mut line).await {
-                    Ok(u) => {
+            let mut line: String = String::new();
+            match reader.read_line(&mut line).await {
+                Ok(u) => {
+                    let mut alive = true;
+                    {
+                        let s = state.lock().await;
+                        if matches!(*s,false) {
+                            alive = false
+                        }
+                        debug!("Reading mutex");
+                    }
+                    if alive {
                         if u > 0 {
                             let response = "ACK\n";
                             w.write_all(response.as_bytes())
@@ -101,11 +101,11 @@ pub mod handlers_messager {
                                 "TOKEN" => {
                                     let mut empty = false;
                                     let guard = connections.lock().await;
-
+    
                                     if *guard <= 0 {
                                         empty = true;
                                     }
-
+    
                                     if empty {
                                         thread::sleep(Duration::from_secs(3));
                                         debug!("No REQ messages next server");
@@ -139,14 +139,14 @@ pub mod handlers_messager {
                             line.clear();
                         }
                     }
-                    Err(_) => {
-                        error!("Could not read from TCP Stream");
+                    else{
                         break;
                     }
                 }
-            } else {
-                warn!("Server is dead...");
-                break;
+                Err(_) => {
+                    error!("Could not read from TCP Stream");
+                    break;
+                }
             }
         }
     }

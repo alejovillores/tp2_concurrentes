@@ -86,6 +86,25 @@ async fn handle_right_neighbor(
     let mut last_message = String::new();
     let mut port_last_number = id;
     loop {
+        let mut conn = connect_right_neigbor(id, servers, &mut port_last_number)
+            .await
+            .unwrap();
+        conn.write_all(b"SH\n")
+            .await
+            .expect("Falla la escritura tcp");
+        if id == 1 && last_message.is_empty() {
+            debug!("Sending token to next server");
+            conn.write_all(b"TOKEN\n")
+                .await
+                .expect("could not send token");
+        }
+        if !last_message.is_empty() {
+            conn.write_all(last_message.as_bytes())
+                .await
+                .expect("Could not send last message");
+        }
+        debug!("Waiting from channel");
+        let mut disconnected = false;
         let mut alive = true;
         {
             let s = state.lock().await;
@@ -94,29 +113,9 @@ async fn handle_right_neighbor(
             }
         }
         if alive {
-            let mut conn = connect_right_neigbor(id, servers, &mut port_last_number)
-                .await
-                .unwrap();
-            conn.write_all(b"SH\n")
-                .await
-                .expect("Falla la escritura tcp");
-            if id == 1 && last_message.is_empty() {
-                debug!("Sending token to next server");
-                conn.write_all(b"TOKEN\n")
-                    .await
-                    .expect("could not send token");
-            }
-            if !last_message.is_empty() {
-                conn.write_all(last_message.as_bytes())
-                    .await
-                    .expect("Could not send last message");
-            }
-            debug!("Waiting from channel");
-            let mut disconnected = false;
             while let Some(message) = rx.recv().await {
                 last_message = message.clone();
                 debug!("GOT = {}", message);
-
                 match conn.write_all(message.as_bytes()).await {
                     Ok(_) => {
                         let mut buffer = [0; 1024];
@@ -150,6 +149,9 @@ async fn handle_right_neighbor(
                 info!("Trying to reconnect");
                 servers -= 1;
             }
+        }
+        else{
+            conn.shutdown().await;
         }
     }
 }
