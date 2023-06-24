@@ -5,6 +5,7 @@ use local_server::utils::handlers_messages::handlers_messager::handle_controller
 use local_server::utils::handlers_messages::handlers_messager::handle_server_connection;
 use log::{debug, error, info, warn};
 use tokio::join;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -82,9 +83,11 @@ async fn handle_right_neighbor(
     mut servers: u8,
     mut rx: Receiver<String>,
     state: Arc<Mutex<bool>>,
-) {
+) -> ! {
     let mut last_message = String::new();
     let mut port_last_number = id;
+    let mut last_timestamp:u128 = 0;
+    
     loop {
         let mut conn = connect_right_neigbor(id, servers, &mut port_last_number)
             .await
@@ -96,15 +99,24 @@ async fn handle_right_neighbor(
 
         if id == 1 && last_message.is_empty() {
             debug!("Sending token to next server");
-            conn.write_all(b"TOKEN\n")
+            last_timestamp = get_timestime_now();
+            conn.write_all(format!("TOKEN,{},{}\n",servers,last_timestamp).as_bytes())
                 .await
                 .expect("could not send token");
+            
             let mut buffer = [0; 1024];
             conn.read(&mut buffer).await;
             let res = String::from_utf8_lossy(&buffer);
             debug!("1er BUFFER:{}",res);
         }
+        if last_message.starts_with("REC"){
+            last_message.clear();
+        }
+        
         if !last_message.is_empty() {
+            if last_message.starts_with("TOKEN") {
+                last_message = format!("TOKEN,{},{}\n",servers,last_timestamp);
+            }
             conn.write_all(last_message.as_bytes())
                 .await
                 .expect("Could not send last message");
@@ -122,64 +134,120 @@ async fn handle_right_neighbor(
                 }
             }
             if matches!(alive,false) {
-                conn.shutdown();
+                conn.shutdown().await.expect("shutdown fail");
                 break;
             }
             last_message = message.clone();
             debug!("GOT = {}", message);
             let parts: Vec<&str> = message.split(',').map(|s| s.trim()).collect();
-            if parts[0] == "RECOVERY" {
-                warn!("Recovery from sender");
-                last_message.clear();
-                let id_recovery = parts[1].parse::<u8>().expect("Could not parse number");
-                info!("recover port {}", id_recovery);
-                servers += 1;
-                //FIXME:
-                if id < servers {
-                    port_last_number = id;
-                } else {
-                    port_last_number = id_recovery;
+            match parts[0]{
+                "RECOVERY" => {
+                    warn!("Recovery from sender");
+
+                    let id_recovery = parts[1].parse::<u8>().expect("Could not parse number");
+                    info!("recover port {}", id_recovery);
+                    conn.shutdown().await.expect("shutdown fail");
+                    debug!("SUMO SERVER");
+                    last_timestamp = get_timestime_now();
+                    servers += 1;
+                    //FIXME:
+                    if id < servers {
+                        port_last_number = id;
+                    } else {
+                        port_last_number = id_recovery;
+                    }
+                    break;
                 }
-                break;
-            }
-            else{
-                match conn.write_all(message.as_bytes()).await {
-                    Ok(_) => {
-                        debug!("Enviado. Esperando respuesta");
-                        let mut buffer = [0; 1024];
-                        match conn.read(&mut buffer).await {
-                            Ok(u) => {
-                                let res = String::from_utf8_lossy(&buffer);
-                                debug!("BUFFER:{}",res);
-                                if  u == 0 {
-                                    error!("Server disconnected");
+                "RECONNECT" => {
+                    let id_recovery = parts[1].parse::<u8>().expect("Could not parse number");
+
+                    if id < servers {
+                        port_last_number = id;
+                    } else {
+                        port_last_number = id_recovery;
+                    }
+                    break;
+                }
+                "TOKEN" => {
+                    let s : u8= parts[1].parse::<u8>().expect("Could not parse number");
+                    let timestamp = parts[2].parse::<u128>().expect("Could not parse number");
+                    if last_timestamp < timestamp {
+                        servers = s;
+                        last_timestamp = timestamp;
+                    }
+                    let response = format!("TOKEN,{},{}\n",servers,last_timestamp);
+                    last_message = response.clone();
+                    match conn.write_all(response.as_bytes()).await {
+                        Ok(_) => {
+                            debug!("Enviado. Esperando respuesta");
+                            let mut buffer = [0; 1024];
+                            match conn.read(&mut buffer).await {
+                                Ok(u) => {
+                                    let res = String::from_utf8_lossy(&buffer);
+                                    debug!("BUFFER:{}",res);
+                                    if  u == 0 {
+                                        error!("Server disconnected");
+                                        disconnected = true;
+                                        break;
+                                    } else {
+                                        debug!("Mensaje enviado");
+                                    }
+                                }
+                                Err(e) => {
+                                    error!("Can't get answer from server: {}", e);
                                     disconnected = true;
                                     break;
-                                } else {
-                                    debug!("Mensaje enviado");
                                 }
                             }
-                            Err(e) => {
-                                error!("Can't get answer from server: {}", e);
-                                disconnected = true;
-                                break;
-                            }
+                        }
+                        Err(_) => {
+                            debug!("Falla la escritura tcp");
+                            error!("Server disconnecteed");
+                            disconnected = true;
+                            break;
                         }
                     }
-                    Err(_) => {
-                        debug!("Falla la escritura tcp");
-                        error!("Server disconnecteed");
-                        disconnected = true;
-                        break;
+                }
+                _ => {
+                    match conn.write_all(message.as_bytes()).await {
+                        Ok(_) => {
+                            debug!("Enviado. Esperando respuesta");
+                            let mut buffer = [0; 1024];
+                            match conn.read(&mut buffer).await {
+                                Ok(u) => {
+                                    let res = String::from_utf8_lossy(&buffer);
+                                    debug!("BUFFER:{}",res);
+                                    if  u == 0 {
+                                        error!("Server disconnected");
+                                        disconnected = true;
+                                        break;
+                                    } else {
+                                        debug!("Mensaje enviado");
+                                    }
+                                }
+                                Err(e) => {
+                                    error!("Can't get answer from server: {}", e);
+                                    disconnected = true;
+                                    break;
+                                }
+                            }
+                        }
+                        Err(_) => {
+                            debug!("Falla la escritura tcp");
+                            error!("Server disconnecteed");
+                            disconnected = true;
+                            break;
+                        }
                     }
                 }
             }
-            }
-            if disconnected {
-                info!("Trying to reconnect");
-                servers -= 1;
-            }
         }
+        if disconnected {
+            info!("Trying to reconnect");
+            last_timestamp = get_timestime_now();
+            servers -= 1;
+        }
+    }
 }
 
 
@@ -232,7 +300,7 @@ async fn handle_connection(
                     .await;
                 }
                 "CTRL" => {
-                    handle_controller_connection(reader, w, sender, state, id,2).await;
+                    handle_controller_connection(reader, w, sender, state, id,3).await;
                 }
                 "RECOVERY" => {
                     sender.send(line).await.expect("fail sending recovery to sender");
@@ -279,4 +347,18 @@ async fn connect_right_neigbor(
     Err(String::from(
         "RIGHT NEIGHBOR - could not connect in 5 attemps",
     ))
+}
+
+
+
+fn get_timestime_now() -> u128 {
+    let now = SystemTime::now();
+    match now.duration_since(UNIX_EPOCH) {
+        Ok(duration) => {
+            return duration.as_millis();
+        },
+        Err(_) => {
+            0
+        },
+    }
 }

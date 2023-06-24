@@ -46,8 +46,9 @@ pub mod handlers_messager {
                             "UP" => {
                                 let mut s = state.lock().await;
                                 *s = true;
+                                debug!("UP received - Now this server is online");
                                 recovery(id,servers).await;
-                                let message = format!("RECOVERY,{}",id);
+                                let message = format!("RECONNECT,{}",id);
                                 sender_copy.send(message).await.expect("could not send recovery message");
                             }
                             _ => {
@@ -82,19 +83,19 @@ pub mod handlers_messager {
             let mut line: String = String::new();
             match reader.read_line(&mut line).await {
                 Ok(u) => {
-                    let mut alive = true;
-                    {
-                        let s = state.lock().await;
-                        warn!("EL LOCK LO TIENE EL SERVER");
-
-                        if matches!(*s,false) {
-                            alive = false
+                    if u > 0{
+                        let mut alive = true;
+                        {
+                            let s = state.lock().await;
+                            warn!("EL LOCK LO TIENE EL SERVER");
+    
+                            if matches!(*s,false) {
+                                alive = false
+                            }
+                            debug!("Reading mutex");
                         }
-                        debug!("Reading mutex");
-                    }
-                    debug!("alive is {:?}",alive);
-                    if alive {
-                        if u > 0 {
+                        debug!("alive is {:?}",alive);
+                        if alive {
                             debug!("Send ack");
                             let token = token_copy.clone();
                             let parts: Vec<&str> = line.split(',').map(|s| s.trim()).collect();
@@ -121,7 +122,7 @@ pub mod handlers_messager {
                                         sync_next(server, sender_copy).await;
                                         debug!("Send token to next server");
                                         sender
-                                            .send("TOKEN\n".to_owned())
+                                            .send(line.clone())
                                             .await
                                             .expect("could not send token through channel");
                                     } else {
@@ -152,11 +153,12 @@ pub mod handlers_messager {
                             }
                             line.clear();
                         }
+                        else{
+                            error!("Ya estoy aca");
+                            break;
+                        }
                     }
-                    else{
-                        error!("Ya estoy aca");
-                        break;
-                    }
+
                 }
                 Err(_) => {
                     error!("Could not read from TCP Stream");
