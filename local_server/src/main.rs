@@ -88,7 +88,7 @@ async fn handle_right_neighbor(
     let mut port_last_number = id;
     let mut last_timestamp: u128 = 0;
     let mut last_accounts_updated: u128 = 0;
-
+    let mut election_sent = false;
     loop {
         let mut conn = connect_right_neigbor(id, servers, &mut port_last_number)
             .await
@@ -171,6 +171,7 @@ async fn handle_right_neighbor(
                 }
                 "TOKEN" => {
                     last_accounts_updated = get_timestime_now();
+                    election_sent = false;
                     let s: u8 = parts[1].parse::<u8>().expect("Could not parse number");
                     let timestamp = parts[2].parse::<u128>().expect("Could not parse number");
                     if last_timestamp < timestamp {
@@ -214,13 +215,18 @@ async fn handle_right_neighbor(
                     debug!("Recibi un ELECTION");
                     let timestamp = parts[1].parse::<u128>().expect("Could not parse number");
                     let mut response = message.clone();
-                    if last_accounts_updated > timestamp {
+                    if last_accounts_updated > timestamp  && !election_sent {
                         debug!("Yo las tengo mas actualizadas");
                         response = format!("ELECTION, {}\n", last_accounts_updated);
-                    } else if last_accounts_updated == timestamp {
+                        election_sent = true;
+                    } else if last_accounts_updated == timestamp && election_sent {
                         debug!("Es mi mensaje");
                         info!("Soy el nuevo portador del token");
                         response = format!("TOKEN,{},{}\n", servers, last_timestamp);
+                        election_sent = false;
+                    } else if election_sent {
+                        debug!("Me llego un election duplicado");
+                        continue;
                     }
                     last_message = response.clone();
                     match conn.write_all(response.as_bytes()).await {
