@@ -211,12 +211,16 @@ async fn handle_right_neighbor(
                     }
                 }
                 "ELECTION" => {
-                    info!("Recibi un ELECTION");
+                    debug!("Recibi un ELECTION");
                     let timestamp = parts[1].parse::<u128>().expect("Could not parse number");
                     let mut response = message.clone();
                     if last_accounts_updated > timestamp {
-                        info!("Yo las tengo mas actualizadas");
+                        debug!("Yo las tengo mas actualizadas");
                         response = format!("ELECTION, {}\n", last_accounts_updated);
+                    } else if last_accounts_updated == timestamp {
+                        debug!("Es mi mensaje");
+                        info!("Soy el nuevo portador del token");
+                        response = format!("TOKEN,{},{}\n", servers, last_timestamp);
                     }
                     last_message = response.clone();
                     match conn.write_all(response.as_bytes()).await {
