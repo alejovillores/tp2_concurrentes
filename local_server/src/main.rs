@@ -16,6 +16,7 @@ use tokio::io::{self, split, AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufRe
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc::{self, Receiver, Sender};
 use tokio::sync::{Mutex, Notify};
+use local_server::structs::messages::SyncNextServer;
 
 #[actix_rt::main]
 async fn main() {
@@ -34,10 +35,10 @@ async fn main() {
     let coffee_makers = Arc::new(Mutex::new(0));
     let state: Arc<Mutex<bool>> = Arc::new(Mutex::new(true));
     let (tx, mut rx): (Sender<String>, Receiver<String>) = mpsc::channel(1);
-
+    let server_actor_copy_1 = server_actor_address.clone();
     let state_clone = state.clone();
     let rn = tokio::spawn(async move {
-        handle_right_neighbor(id, 3, rx, state_clone).await;
+        handle_right_neighbor(id, 3, rx, state_clone, server_actor_copy_1).await;
     });
 
     let server = tokio::spawn(async move {
@@ -82,6 +83,7 @@ async fn handle_right_neighbor(
     mut servers: u8,
     mut rx: Receiver<String>,
     state: Arc<Mutex<bool>>,
+    server_actor_address: Addr<LocalServer>,
 ) -> ! {
     let mut last_message = String::new();
     let mut port_last_number = id;
@@ -203,6 +205,21 @@ async fn handle_right_neighbor(
                     } else if last_accounts_updated == timestamp && election_sent {
                         debug!("Es mi mensaje");
                         info!("Soy el nuevo portador del token");
+                        match server_actor_address.send(SyncNextServer {}).await {
+                            Ok(accounts) => {
+                                for account in accounts {
+                                    let message = format!("SYNC,{},{}\n", account.customer_id, account.points);
+                                    debug!("Sync {} to customer id {}", account.customer_id, account.points);
+                                    match wait_ok(message,&mut conn,&mut disconnected).await {
+                                        Ok(_) => info!("OK from next server"),
+                                        Err(_) => break,
+                                    }
+                                    thread::sleep(Duration::from_secs(1));
+                                }
+                                info!("Sync accounts to next neighbor finished");
+                            }
+                            Err(_) => error!("Fail trying to sync next server"),
+                        }
                         response = format!("TOKEN,{},{}\n", servers, last_timestamp);
                         election_sent = false;
                     } else if election_sent {
