@@ -84,7 +84,7 @@ async fn handle_right_neighbor(
     mut rx: Receiver<String>,
     state: Arc<Mutex<bool>>,
     server_actor_address: Addr<LocalServer>,
-) -> ! {
+) {
     let mut last_message = String::new();
     let mut port_last_number = id;
     let mut last_timestamp: u128 = 0;
@@ -126,7 +126,7 @@ async fn handle_right_neighbor(
         debug!("Waiting from channel");
         let mut disconnected = false;
 
-        let mut alive: bool = true;
+        let mut alive = true;
         while let Some(message) = rx.recv().await {
             {
                 let s = state.lock().await;
@@ -135,14 +135,14 @@ async fn handle_right_neighbor(
                     alive = false
                 }
             }
-            if matches!(alive, false) {
-                conn.shutdown().await.expect("shutdown fail");
-                break;
-            }
             last_message = message.clone();
             debug!("GOT = {}", message);
             let parts: Vec<&str> = message.split(',').map(|s| s.trim()).collect();
             match parts[0] {
+                "KILL" => {
+                    error!("Shutting down right neighbor connection");
+                    conn.shutdown().await.expect("shutdown fail");
+                }
                 "RECOVERY" => {
                     warn!("Recovery from sender");
 
@@ -173,9 +173,13 @@ async fn handle_right_neighbor(
                 "SEND" => {
                     let response = format!("TOKEN,{},{}\n",servers,last_timestamp);
                     last_message = response.clone();
-                    match wait_ok(response,&mut conn,&mut disconnected).await {
+                    match wait_ok(response,&mut conn,&mut disconnected, alive).await {
                         Ok(_) => info!("OK from next server"),
-                        Err(_) => break,
+                        Err(_) => {
+                            if matches!(alive, true) {
+                                break
+                            }
+                        }
                     }
                 }
                 "TOKEN" => {
@@ -189,13 +193,17 @@ async fn handle_right_neighbor(
                     }
                     let response = format!("TOKEN,{},{}\n", servers, last_timestamp);
                     last_message = response.clone();
-                    match wait_ok(response,&mut conn,&mut disconnected).await {
+                    match wait_ok(response,&mut conn,&mut disconnected, alive).await {
                         Ok(_) => info!("OK from next server"),
-                        Err(_) => break,
+                        Err(_) => {
+                            if matches!(alive, true) {
+                                break
+                            }
+                        },
                     }
                 }
                 "ELECTION" => {
-                    debug!("Recibi un ELECTION");
+                    debug!("Recibi un ELECTION, se lo mando a {}", port_last_number);
                     let timestamp = parts[1].parse::<u128>().expect("Could not parse number");
                     let mut response = message.clone();
                     if last_accounts_updated > timestamp  && !election_sent {
@@ -210,9 +218,13 @@ async fn handle_right_neighbor(
                                 for account in accounts {
                                     let message = format!("SYNC,{},{}\n", account.customer_id, account.points);
                                     debug!("Sync {} to customer id {}", account.customer_id, account.points);
-                                    match wait_ok(message,&mut conn,&mut disconnected).await {
+                                    match wait_ok(message,&mut conn,&mut disconnected, alive).await {
                                         Ok(_) => info!("OK from next server"),
-                                        Err(_) => break,
+                                        Err(_) => {
+                                            if matches!(alive, true) {
+                                                break
+                                            }
+                                        },
                                     }
                                     thread::sleep(Duration::from_secs(1));
                                 }
@@ -227,16 +239,24 @@ async fn handle_right_neighbor(
                         continue;
                     }
                     last_message = response.clone();
-                    match wait_ok(response,&mut conn,&mut disconnected).await {
+                    match wait_ok(response,&mut conn,&mut disconnected, alive).await {
                         Ok(_) => info!("OK from next server"),
-                        Err(_) => break,
+                        Err(_) => {
+                            if matches!(alive, true) {
+                                break
+                            }
+                        },
                     }
 
                 }
                 _ => {
-                    match wait_ok(message,&mut conn,&mut disconnected).await {
+                    match wait_ok(message,&mut conn,&mut disconnected, alive).await {
                         Ok(_) => info!("OK from next server"),
-                        Err(_) => break,
+                        Err(_) => {
+                            if matches!(alive, true) {
+                                break
+                            }
+                        },
                     }
 
                 }
@@ -265,6 +285,9 @@ async fn handle_right_neighbor(
                     }
                     Err(_) => {
                         debug!("Falla la escritura tcp");
+                        if matches!(alive, false) {
+                            continue;
+                        }
                         error!("Server disconnecteed");
                         disconnected = true;
                         break;
@@ -391,7 +414,7 @@ fn get_timestime_now() -> u128 {
     }
 }
 
-async fn wait_ok(message: String,conn: &mut TcpStream, disconnected: &mut bool ) -> Result<(), ()> {
+async fn wait_ok(message: String,conn: &mut TcpStream, disconnected: &mut bool, alive: bool ) -> Result<(), ()> {
     match conn.write_all(message.as_bytes()).await {
         Ok(_) => {
             debug!("Enviado. Esperando respuesta");
@@ -418,8 +441,10 @@ async fn wait_ok(message: String,conn: &mut TcpStream, disconnected: &mut bool )
         }
         Err(_) => {
             debug!("Falla la escritura tcp");
-            error!("Server disconnecteed");
-            *disconnected = true;
+            if matches!(alive, true) {
+                error!("Server disconnecteed");
+                *disconnected = true;
+            }
             Err(())
         }
     }

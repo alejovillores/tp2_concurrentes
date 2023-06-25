@@ -42,6 +42,8 @@ pub mod handlers_messager {
                             "KILL" => {
                                 let mut s = state.lock().await;
                                 *s = false;
+                                let message = String::from("KILL");
+                                sender_copy.send(message).await.expect("could not send recovery message");
                                 warn!("KILL received - Now this server is offline");
                             }
                             "UP" => {
@@ -85,10 +87,15 @@ pub mod handlers_messager {
         let mut cont = 0;
         let mut last_accounts_updated: u128 = 0;
         loop {
-            let mut line: String = String::new();
-            let timeout = time::timeout(Duration::from_secs(15), reader.read_line(&mut line));
+            // let mut line: String = String::new();
+            let mut buf = Vec::new();
+            let timeout = time::timeout(Duration::from_secs(15), reader.read_until(b'\n', &mut buf));
             match timeout.await {
                 Ok(result) => match result {
+                    Ok(0) => {
+                        info!("Left neighbor lost connection");
+                        break;
+                    }
                     Ok(u) => {
                         if u > 0 {
                             let mut alive = true;
@@ -104,6 +111,7 @@ pub mod handlers_messager {
                             debug!("alive is {:?}", alive);
                             if alive {
                                 debug!("Send ack");
+                                let mut line = String::from_utf8(buf).unwrap();
                                 let token = token_copy.clone();
                                 let parts: Vec<&str> = line.split(',').map(|s| s.trim()).collect();
                                 let server = server_actor_address.clone();
@@ -158,7 +166,6 @@ pub mod handlers_messager {
                                         w.write_all(response.as_bytes())
                                             .await
                                             .expect("Error writing tcp");
-                                        thread::sleep(Duration::from_secs(2));
                                         sender
                                             .send(line.clone())
                                             .await
@@ -188,7 +195,6 @@ pub mod handlers_messager {
                         .send(msg)
                         .await
                         .expect("could not send token through channel");
-                    break;
                 }
             }
         }
