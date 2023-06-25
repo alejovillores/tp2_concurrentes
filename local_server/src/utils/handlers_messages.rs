@@ -1,5 +1,5 @@
 pub mod handlers_messager {
-    use crate::local_server::{LocalServer};
+    use crate::local_server::LocalServer;
     use crate::structs::token::Token;
     use actix::Addr;
     use log::{debug, error, info, warn};
@@ -10,7 +10,7 @@ pub mod handlers_messager {
     use crate::structs::messages::{
         AddPoints, BlockPoints, SubtractPoints, SyncAccount, SyncNextServer, UnblockPoints,
     };
-    use std::{thread};
+    use std::thread;
     use tokio::io::{self, AsyncBufReadExt, AsyncWriteExt, BufReader};
     use tokio::net::TcpStream;
     use tokio::sync::mpsc::Sender;
@@ -23,7 +23,7 @@ pub mod handlers_messager {
         sender: Sender<String>,
         state: Arc<Mutex<bool>>,
         id: u8,
-        servers:u8
+        servers: u8,
     ) {
         debug!("Reading from neighbor");
         loop {
@@ -48,9 +48,12 @@ pub mod handlers_messager {
                                 let mut s = state.lock().await;
                                 *s = true;
                                 debug!("UP received - Now this server is online");
-                                recovery(id,servers).await;
-                                let message = format!("RECONNECT,{}",id);
-                                sender_copy.send(message).await.expect("could not send recovery message");
+                                recovery(id, servers).await;
+                                let message = format!("RECONNECT,{}", id);
+                                sender_copy
+                                    .send(message)
+                                    .await
+                                    .expect("could not send recovery message");
                             }
                             _ => {
                                 error!("Unkown");
@@ -80,24 +83,25 @@ pub mod handlers_messager {
     ) {
         debug!("Reading from neighbor");
         let mut cont = 0;
+        let mut last_accounts_updated: u128 = 0;
         loop {
             let mut line: String = String::new();
-            let timeout = time::timeout(Duration::from_secs(5), reader.read_line(&mut line));
+            let timeout = time::timeout(Duration::from_secs(15), reader.read_line(&mut line));
             match timeout.await {
                 Ok(result) => match result {
                     Ok(u) => {
-                        if u > 0{
+                        if u > 0 {
                             let mut alive = true;
                             {
                                 let s = state.lock().await;
                                 warn!("EL LOCK LO TIENE EL SERVER");
 
-                                if matches!(*s,false) {
+                                if matches!(*s, false) {
                                     alive = false
                                 }
                                 debug!("Reading mutex");
                             }
-                            debug!("alive is {:?}",alive);
+                            debug!("alive is {:?}", alive);
                             if alive {
                                 debug!("Send ack");
                                 let token = token_copy.clone();
@@ -107,8 +111,8 @@ pub mod handlers_messager {
                                 debug!("Read from neigbor {:?}", parts);
                                 match parts[0] {
                                     "TOKEN" => {
-                                        cont +=1;
-                                        let response = format!("OK,{}\n",cont);
+                                        cont += 1;
+                                        let response = format!("OK,{}\n", cont);
                                         w.write_all(response.as_bytes())
                                             .await
                                             .expect("Error writing tcp");
@@ -137,8 +141,8 @@ pub mod handlers_messager {
                                         }
                                     }
                                     "SYNC" => {
-                                        cont +=1;
-                                        let response = format!("OK,{}\n",cont);
+                                        cont += 1;
+                                        let response = format!("OK,{}\n", cont);
                                         w.write_all(response.as_bytes())
                                             .await
                                             .expect("Error writing tcp");
@@ -149,28 +153,41 @@ pub mod handlers_messager {
                                         server.send(msg).await.unwrap();
                                         info!("Sync account {} with {} points", parts[1], parts[2]);
                                     }
+                                    "ELECTION" => {
+                                        let response = format!("OK,{}\n", cont);
+                                        w.write_all(response.as_bytes())
+                                            .await
+                                            .expect("Error writing tcp");
+                                        thread::sleep(Duration::from_secs(2));
+                                        sender
+                                            .send(line.clone())
+                                            .await
+                                            .expect("could not send election through channel");
+                                    }
                                     _ => {
                                         error!("Unkown");
                                         break;
                                     }
                                 }
                                 line.clear();
-                            }
-                            else{
+                            } else {
                                 error!("Ya estoy aca");
                                 break;
                             }
                         }
-
                     }
                     Err(_) => {
                         error!("Could not read from TCP Stream");
                         break;
                     }
-                }
+                },
                 Err(_) => {
-                    error!("Timeout reached!");
-                    break;
+                    error!("Timeout reached! Server with token is down.");
+                    let msg = String::from("ELECTION, 0");
+                    sender
+                        .send(msg)
+                        .await
+                        .expect("could not send token through channel");
                 }
             }
         }
@@ -474,23 +491,21 @@ pub mod handlers_messager {
         }
     }
 
-    async fn recovery(id: u8,servers:u8) {
+    async fn recovery(id: u8, servers: u8) {
         let mut port = id - 1;
         if id == 1 {
             port = servers
         }
-        let socket = format!("127.0.0.1:888{}",port);
-        let message = format!("RECOVERY,{}",id);
+        let socket = format!("127.0.0.1:888{}", port);
+        let message = format!("RECOVERY,{}", id);
 
         match TcpStream::connect(socket).await {
-            Ok(mut s) => {
-                match s.write_all(message.as_bytes()).await {
-                    Ok(_) => {
-                        debug!("Send RECOVERY to left neighbor");
-                    },
-                    Err(_) => {
-                        error!("Error sending RECOVERY to left neighbor");
-                    },
+            Ok(mut s) => match s.write_all(message.as_bytes()).await {
+                Ok(_) => {
+                    debug!("Send RECOVERY to left neighbor");
+                }
+                Err(_) => {
+                    error!("Error sending RECOVERY to left neighbor");
                 }
             },
             Err(_) => todo!(),
