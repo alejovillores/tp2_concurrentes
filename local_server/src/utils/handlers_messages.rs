@@ -188,6 +188,7 @@ pub mod handlers_messager {
                         .send(msg)
                         .await
                         .expect("could not send token through channel");
+                    break;
                 }
             }
         }
