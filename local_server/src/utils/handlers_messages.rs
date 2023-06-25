@@ -354,7 +354,7 @@ pub mod handlers_messager {
 
                                     sync_next(server, neighbor.clone()).await;
                                     neighbor
-                                        .send(String::from("TOKEN\n"))
+                                        .send(String::from("SEND\n"))
                                         .await
                                         .expect("could not send token from unblock message");
                                     return "ACK\n".to_string();
@@ -407,7 +407,7 @@ pub mod handlers_messager {
                                     info!("Token is no more avaliable");
                                     sync_next(server, neighbor.clone()).await;
                                     neighbor
-                                        .send("TOKEN\n".to_string())
+                                        .send("SEND\n".to_string())
                                         .await
                                         .expect("Could not send token");
                                     return "ACK\n".to_string();

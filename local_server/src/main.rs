@@ -11,7 +11,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use local_server::local_server::LocalServer;
-use mockall::PredicateBoxExt;
 use std::{env, thread};
 use tokio::io::{self, split, AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
@@ -115,8 +114,8 @@ async fn handle_right_neighbor(
         }
 
         if !last_message.is_empty() {
-            if last_message.starts_with("TOKEN") {
-                last_message = format!("TOKEN,{},{}\n", servers, last_timestamp);
+            if last_message.starts_with("TOKEN") || last_message.starts_with("SEND") {
+                last_message = format!("TOKEN,{},{}\n",servers,last_timestamp);
             }
             conn.write_all(last_message.as_bytes())
                 .await
@@ -169,6 +168,14 @@ async fn handle_right_neighbor(
                     }
                     break;
                 }
+                "SEND" => {
+                    let response = format!("TOKEN,{},{}\n",servers,last_timestamp);
+                    last_message = response.clone();
+                    match wait_ok(response,&mut conn,&mut disconnected).await {
+                        Ok(_) => info!("OK from next server"),
+                        Err(_) => break,
+                    }
+                }
                 "TOKEN" => {
                     last_accounts_updated = get_timestime_now();
                     election_sent = false;
@@ -180,35 +187,9 @@ async fn handle_right_neighbor(
                     }
                     let response = format!("TOKEN,{},{}\n", servers, last_timestamp);
                     last_message = response.clone();
-                    match conn.write_all(response.as_bytes()).await {
-                        Ok(_) => {
-                            debug!("Enviado. Esperando respuesta");
-                            let mut buffer = [0; 1024];
-                            match conn.read(&mut buffer).await {
-                                Ok(u) => {
-                                    let res = String::from_utf8_lossy(&buffer);
-                                    debug!("BUFFER:{}", res);
-                                    if u == 0 {
-                                        error!("Server disconnected");
-                                        disconnected = true;
-                                        break;
-                                    } else {
-                                        debug!("Mensaje enviado");
-                                    }
-                                }
-                                Err(e) => {
-                                    error!("Can't get answer from server: {}", e);
-                                    disconnected = true;
-                                    break;
-                                }
-                            }
-                        }
-                        Err(_) => {
-                            debug!("Falla la escritura tcp");
-                            error!("Server disconnecteed");
-                            disconnected = true;
-                            break;
-                        }
+                    match wait_ok(response,&mut conn,&mut disconnected).await {
+                        Ok(_) => info!("OK from next server"),
+                        Err(_) => break,
                     }
                 }
                 "ELECTION" => {
@@ -229,35 +210,16 @@ async fn handle_right_neighbor(
                         continue;
                     }
                     last_message = response.clone();
-                    match conn.write_all(response.as_bytes()).await {
-                        Ok(_) => {
-                            debug!("Enviado. Esperando respuesta");
-                            let mut buffer = [0; 1024];
-                            match conn.read(&mut buffer).await {
-                                Ok(u) => {
-                                    let res = String::from_utf8_lossy(&buffer);
-                                    debug!("BUFFER:{}", res);
-                                    if u == 0 {
-                                        error!("Server disconnected");
-                                        disconnected = true;
-                                        break;
-                                    } else {
-                                        debug!("Mensaje enviado");
-                                    }
-                                }
-                                Err(e) => {
-                                    error!("Can't get answer from server: {}", e);
-                                    disconnected = true;
-                                    break;
-                                }
-                            }
-                        }
-                        Err(_) => {
-                            debug!("Falla la escritura tcp");
-                            error!("Server disconnecteed");
-                            disconnected = true;
-                            break;
-                        }
+                    match wait_ok(response,&mut conn,&mut disconnected).await {
+                        Ok(_) => info!("OK from next server"),
+                        Err(_) => break,
+                    }
+
+                }
+                _ => {
+                    match wait_ok(message,&mut conn,&mut disconnected).await {
+                        Ok(_) => info!("OK from next server"),
+                        Err(_) => break,
                     }
 
                 }
@@ -409,5 +371,39 @@ fn get_timestime_now() -> u128 {
             return duration.as_millis();
         }
         Err(_) => 0,
+    }
+}
+
+async fn wait_ok(message: String,conn: &mut TcpStream, disconnected: &mut bool ) -> Result<(), ()> {
+    match conn.write_all(message.as_bytes()).await {
+        Ok(_) => {
+            debug!("Enviado. Esperando respuesta");
+            let mut buffer = [0; 1024];
+            match conn.read(&mut buffer).await {
+                Ok(u) => {
+                    let res = String::from_utf8_lossy(&buffer);
+                    debug!("BUFFER:{}",res);
+                    if  u == 0 {
+                        error!("Server disconnected");
+                        *disconnected = true;
+                        Err(())
+                    } else {
+                        debug!("Mensaje enviado");
+                        Ok(())
+                    }
+                }
+                Err(e) => {
+                    error!("Can't get answer from server: {}", e);
+                    *disconnected = true;
+                    Err(())
+                }
+            }
+        }
+        Err(_) => {
+            debug!("Falla la escritura tcp");
+            error!("Server disconnecteed");
+            *disconnected = true;
+            Err(())
+        }
     }
 }
