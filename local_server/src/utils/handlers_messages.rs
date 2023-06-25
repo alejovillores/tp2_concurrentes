@@ -15,6 +15,7 @@ pub mod handlers_messager {
     use tokio::net::TcpStream;
     use tokio::sync::mpsc::Sender;
     use tokio::sync::{Mutex, Notify};
+    use tokio::time;
 
     pub async fn handle_controller_connection(
         mut reader: BufReader<io::ReadHalf<TcpStream>>,
@@ -81,87 +82,94 @@ pub mod handlers_messager {
         let mut cont = 0;
         loop {
             let mut line: String = String::new();
-            match reader.read_line(&mut line).await {
-                Ok(u) => {
-                    if u > 0{
-                        let mut alive = true;
-                        {
-                            let s = state.lock().await;
-                            warn!("EL LOCK LO TIENE EL SERVER");
-    
-                            if matches!(*s,false) {
-                                alive = false
-                            }
-                            debug!("Reading mutex");
-                        }
-                        debug!("alive is {:?}",alive);
-                        if alive {
-                            debug!("Send ack");
-                            let token = token_copy.clone();
-                            let parts: Vec<&str> = line.split(',').map(|s| s.trim()).collect();
-                            let server = server_actor_address.clone();
-                            let sender_copy = sender.clone();
-                            debug!("Read from neigbor {:?}", parts);
-                            match parts[0] {
-                                "TOKEN" => {
-                                    cont +=1;
-                                    let response = format!("OK,{}\n",cont);
-                                    w.write_all(response.as_bytes())
-                                    .await
-                                    .expect("Error writing tcp");
-                                    let mut empty = false;
-                                    let guard = connections.lock().await;
-    
-                                    if *guard <= 0 {
-                                        empty = true;
-                                    }
-    
-                                    if empty {
-                                        thread::sleep(Duration::from_secs(3));
-                                        debug!("No REQ messages next server");
-                                        sync_next(server, sender_copy).await;
-                                        debug!("Send token to next server");
-                                        sender
-                                            .send(line.clone())
-                                            .await
-                                            .expect("could not send token through channel");
-                                    } else {
-                                        info!("Token should be avaliable");
-                                        let mut t = token.lock().await;
-                                        t.avaliable();
-                                        info!("Token is avaliable");
-                                        notify_copy.notify_waiters();
-                                    }
-                                }
-                                "SYNC" => {
-                                    cont +=1;
-                                    let response = format!("OK,{}\n",cont);
-                                    w.write_all(response.as_bytes())
-                                    .await
-                                    .expect("Error writing tcp");
-                                    let msg = SyncAccount {
-                                        customer_id: parts[1].parse::<u32>().expect(""),
-                                        points: parts[2].parse::<u32>().expect(""),
-                                    };
-                                    server.send(msg).await.unwrap();
-                                    info!("Sync account {} with {} points", parts[1], parts[2]);
-                                }
-                                _ => {
-                                    error!("Unkown");
-                                    break;
-                                }
-                            }
-                            line.clear();
-                        }
-                        else{
-                            error!("Ya estoy aca");
-                            break;
-                        }
-                    }
+            let timeout = time::timeout(Duration::from_secs(5), reader.read_line(&mut line));
+            match timeout.await {
+                Ok(result) => match result {
+                    Ok(u) => {
+                        if u > 0{
+                            let mut alive = true;
+                            {
+                                let s = state.lock().await;
+                                warn!("EL LOCK LO TIENE EL SERVER");
 
+                                if matches!(*s,false) {
+                                    alive = false
+                                }
+                                debug!("Reading mutex");
+                            }
+                            debug!("alive is {:?}",alive);
+                            if alive {
+                                debug!("Send ack");
+                                let token = token_copy.clone();
+                                let parts: Vec<&str> = line.split(',').map(|s| s.trim()).collect();
+                                let server = server_actor_address.clone();
+                                let sender_copy = sender.clone();
+                                debug!("Read from neigbor {:?}", parts);
+                                match parts[0] {
+                                    "TOKEN" => {
+                                        cont +=1;
+                                        let response = format!("OK,{}\n",cont);
+                                        w.write_all(response.as_bytes())
+                                            .await
+                                            .expect("Error writing tcp");
+                                        let mut empty = false;
+                                        let guard = connections.lock().await;
+
+                                        if *guard <= 0 {
+                                            empty = true;
+                                        }
+
+                                        if empty {
+                                            thread::sleep(Duration::from_secs(3));
+                                            debug!("No REQ messages next server");
+                                            sync_next(server, sender_copy).await;
+                                            debug!("Send token to next server");
+                                            sender
+                                                .send(line.clone())
+                                                .await
+                                                .expect("could not send token through channel");
+                                        } else {
+                                            info!("Token should be avaliable");
+                                            let mut t = token.lock().await;
+                                            t.avaliable();
+                                            info!("Token is avaliable");
+                                            notify_copy.notify_waiters();
+                                        }
+                                    }
+                                    "SYNC" => {
+                                        cont +=1;
+                                        let response = format!("OK,{}\n",cont);
+                                        w.write_all(response.as_bytes())
+                                            .await
+                                            .expect("Error writing tcp");
+                                        let msg = SyncAccount {
+                                            customer_id: parts[1].parse::<u32>().expect(""),
+                                            points: parts[2].parse::<u32>().expect(""),
+                                        };
+                                        server.send(msg).await.unwrap();
+                                        info!("Sync account {} with {} points", parts[1], parts[2]);
+                                    }
+                                    _ => {
+                                        error!("Unkown");
+                                        break;
+                                    }
+                                }
+                                line.clear();
+                            }
+                            else{
+                                error!("Ya estoy aca");
+                                break;
+                            }
+                        }
+
+                    }
+                    Err(_) => {
+                        error!("Could not read from TCP Stream");
+                        break;
+                    }
                 }
                 Err(_) => {
-                    error!("Could not read from TCP Stream");
+                    error!("Timeout reached!");
                     break;
                 }
             }
