@@ -140,7 +140,7 @@ async fn handle_right_neighbor(
         while let Some(message) = rx.recv().await {
             {
                 let s = state.lock().await;
-                warn!("EL LOCK LO TIENE EL SENDER");
+                debug!("EL LOCK LO TIENE EL SENDER");
                 if !*s {
                     alive = false
                 }
@@ -162,7 +162,7 @@ async fn handle_right_neighbor(
                     debug!("SUMO SERVER");
                     last_timestamp = get_timestime_now();
                     servers += 1;
-                    //FIXME:
+                    
                     if id < servers {
                         port_last_number = id;
                     } else {
@@ -250,7 +250,7 @@ async fn handle_right_neighbor(
                     }
                     last_message = response.clone();
                     match wait_ok(response,&mut conn,&mut disconnected, alive).await {
-                        Ok(_) => info!("OK from next server"),
+                        Ok(_) => debug!("OK from next server"),
                         Err(_) => {
                             if matches!(alive, true) {
                                 break
@@ -329,9 +329,12 @@ async fn handle_connection(
                     .await;
                 }
                 "CTRL" => {
+                    info!("Controller Connection");
+
                     handle_controller_connection(reader, w, sender, state, id, 3).await;
                 }
                 "RECOVERY" => {
+                    info!("Recovery Connection");
                     sender
                         .send(line)
                         .await

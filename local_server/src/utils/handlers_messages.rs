@@ -100,7 +100,7 @@ pub mod handlers_messager {
                             let mut alive = true;
                             {
                                 let s = state.lock().await;
-                                warn!("EL LOCK LO TIENE EL SERVER");
+                                debug!("EL LOCK LO TIENE EL SERVER");
 
                                 if matches!(*s, false) {
                                     alive = false
@@ -129,6 +129,7 @@ pub mod handlers_messager {
                                         if *guard <= 0 {
                                             empty = true;
                                         }
+                                        info!("TOKEN received");
 
                                         if empty {
                                             thread::sleep(Duration::from_secs(1));
@@ -140,10 +141,10 @@ pub mod handlers_messager {
                                                 .await
                                                 .expect("could not send token through channel");
                                         } else {
-                                            info!("Token should be avaliable");
+                                            debug!("Token should be avaliable");
                                             let mut t = token.lock().await;
                                             t.avaliable();
-                                            info!("Token is avaliable");
+                                            info!("Token is avaliable for REQ");
                                             notify_copy.notify_waiters();
                                         }
                                     }
@@ -158,7 +159,7 @@ pub mod handlers_messager {
                                             points: parts[2].parse::<u32>().expect(""),
                                         };
                                         server.send(msg).await.unwrap();
-                                        info!("Sync account {} with {} points", parts[1], parts[2]);
+                                        info!("SYNC account {} with {} points", parts[1], parts[2]);
                                     }
                                     "ELECTION" => {
                                         let response = format!("OK,{}\n", cont);
@@ -177,7 +178,6 @@ pub mod handlers_messager {
                                 }
                                 line.clear();
                             } else {
-                                error!("Ya estoy aca");
                                 break;
                             }
                         }
@@ -216,7 +216,7 @@ pub mod handlers_messager {
             let server = server_actor_address.clone();
             let sender_copy = sender.clone();
             let mut line = String::new();
-            info!("ABOUT TO WAIT READING");
+            debug!("ABOUT TO WAIT READING");
             match reader.read_line(&mut line).await {
                 Ok(u) => {
                     if u > 0 {
@@ -329,7 +329,7 @@ pub mod handlers_messager {
                         if response.as_str() == "UNK" {
                             break;
                         }
-                        info!("TERMINE DE MANDAR EL NOT ACK");
+                
                     } else {
                         break;
                     }
@@ -340,8 +340,6 @@ pub mod handlers_messager {
                 }
             };
         }
-        info!("TERMINE DE MANDAR EL NOT ACK");
-
     }
 
     async fn handle_add_message(
