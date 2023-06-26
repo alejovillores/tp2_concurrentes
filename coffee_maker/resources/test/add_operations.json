@@ -18,5 +18,10 @@
         "account_id": 4,
         "coffee_points": 5,
         "operation": "ADD"
+    },
+    {
+        "account_id": 1,
+        "coffee_points": 10,
+        "operation": "ADD"
     }
 ]
