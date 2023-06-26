@@ -407,7 +407,7 @@ async fn connect_right_neigbor(
                 error!("{}", e);
                 warn!("RIGHT NEIGHBOR - could not connect ");
                 attemps += 1;
-                thread::sleep(Duration::from_secs(2))
+                thread::sleep(Duration::from_secs(1))
             }
         }
     }
