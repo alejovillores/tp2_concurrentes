@@ -2,7 +2,6 @@ extern crate actix;
 
 use actix::{Actor, Handler, SyncContext};
 use log::{error, info};
-use std::borrow::BorrowMut;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 
