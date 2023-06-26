@@ -191,7 +191,7 @@ impl Handler<SyncNextServer> for LocalServer {
             account_dup.points = account.points;
             accounts.push(account_dup);
         }
-        info!("Sync next accounts: {:?} a enviar", accounts);
+        info!("Accounts State: {:?}", accounts);
         accounts
     }
 }
