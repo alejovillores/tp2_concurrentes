@@ -91,22 +91,19 @@ async fn handle_right_neighbor(
     let mut last_accounts_updated: u128 = 0;
     let mut election_sent = false;
     loop {
+        let mut conn;
         match connect_right_neigbor(id, servers, &mut port_last_number).await {
-            Ok(_) => {},
+            Ok(connection) => conn = connection,
             Err(err) => {
-                match err {
-                    String::from("ONE_SERVER") => {
-                        error!("Only one server left");
-                        break;
-                    }
-                    _ => {
-                        last_timestamp = get_timestime_now();
-                        servers -= 1;
-                    }
+                if err == String::from("ONE_SERVER") {
+                    error!("Only one server left");
+                    break;
                 }
+                last_timestamp = get_timestime_now();
+                servers -= 1;
+                continue;
             }
         }
-
 
         conn.write_all(b"SH\n")
             .await
