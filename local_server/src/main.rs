@@ -11,12 +11,12 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use local_server::local_server::LocalServer;
+use local_server::structs::messages::SyncNextServer;
 use std::{env, thread};
 use tokio::io::{self, split, AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc::{self, Receiver, Sender};
 use tokio::sync::{Mutex, Notify};
-use local_server::structs::messages::SyncNextServer;
 
 #[actix_rt::main]
 async fn main() {
@@ -127,7 +127,7 @@ async fn handle_right_neighbor(
 
         if !last_message.is_empty() {
             if last_message.starts_with("TOKEN") || last_message.starts_with("SEND") {
-                last_message = format!("TOKEN,{},{}\n",servers,last_timestamp);
+                last_message = format!("TOKEN,{},{}\n", servers, last_timestamp);
             }
             conn.write_all(last_message.as_bytes())
                 .await
@@ -162,7 +162,7 @@ async fn handle_right_neighbor(
                     debug!("SUMO SERVER");
                     last_timestamp = get_timestime_now();
                     servers += 1;
-                    
+
                     if id < servers {
                         port_last_number = id;
                     } else {
@@ -181,13 +181,13 @@ async fn handle_right_neighbor(
                     break;
                 }
                 "SEND" => {
-                    let response = format!("TOKEN,{},{}\n",servers,last_timestamp);
+                    let response = format!("TOKEN,{},{}\n", servers, last_timestamp);
                     last_message = response.clone();
-                    match wait_ok(response,&mut conn,&mut disconnected, alive).await {
+                    match wait_ok(response, &mut conn, &mut disconnected, alive).await {
                         Ok(_) => info!("OK from next server"),
                         Err(_) => {
                             if matches!(alive, true) {
-                                break
+                                break;
                             }
                         }
                     }
@@ -203,20 +203,20 @@ async fn handle_right_neighbor(
                     }
                     let response = format!("TOKEN,{},{}\n", servers, last_timestamp);
                     last_message = response.clone();
-                    match wait_ok(response,&mut conn,&mut disconnected, alive).await {
+                    match wait_ok(response, &mut conn, &mut disconnected, alive).await {
                         Ok(_) => info!("OK from next server"),
                         Err(_) => {
                             if matches!(alive, true) {
-                                break
+                                break;
                             }
-                        },
+                        }
                     }
                 }
                 "ELECTION" => {
                     debug!("Recibi un ELECTION, se lo mando a {}", port_last_number);
                     let timestamp = parts[1].parse::<u128>().expect("Could not parse number");
                     let mut response = message.clone();
-                    if last_accounts_updated > timestamp  && !election_sent {
+                    if last_accounts_updated > timestamp && !election_sent {
                         debug!("Yo las tengo mas actualizadas");
                         response = format!("ELECTION, {}\n", last_accounts_updated);
                         election_sent = true;
@@ -226,15 +226,23 @@ async fn handle_right_neighbor(
                         match server_actor_address.send(SyncNextServer {}).await {
                             Ok(accounts) => {
                                 for account in accounts {
-                                    let message = format!("SYNC,{},{}\n", account.customer_id, account.points);
-                                    debug!("Sync {} to customer id {}", account.customer_id, account.points);
-                                    match wait_ok(message,&mut conn,&mut disconnected, alive).await {
+                                    let message = format!(
+                                        "SYNC,{},{}\n",
+                                        account.customer_id, account.points
+                                    );
+                                    debug!(
+                                        "Sync {} to customer id {}",
+                                        account.customer_id, account.points
+                                    );
+                                    match wait_ok(message, &mut conn, &mut disconnected, alive)
+                                        .await
+                                    {
                                         Ok(_) => info!("OK from next server"),
                                         Err(_) => {
                                             if matches!(alive, true) {
-                                                break
+                                                break;
                                             }
-                                        },
+                                        }
                                     }
                                     thread::sleep(Duration::from_secs(1));
                                 }
@@ -249,26 +257,22 @@ async fn handle_right_neighbor(
                         continue;
                     }
                     last_message = response.clone();
-                    match wait_ok(response,&mut conn,&mut disconnected, alive).await {
+                    match wait_ok(response, &mut conn, &mut disconnected, alive).await {
                         Ok(_) => debug!("OK from next server"),
                         Err(_) => {
                             if matches!(alive, true) {
-                                break
+                                break;
                             }
-                        },
+                        }
                     }
-
                 }
-                _ => {
-                    match wait_ok(message,&mut conn,&mut disconnected, alive).await {
-                        Ok(_) => info!("OK from next server"),
-                        Err(_) => {
-                            if matches!(alive, true) {
-                                break
-                            }
-                        },
+                _ => match wait_ok(message, &mut conn, &mut disconnected, alive).await {
+                    Ok(_) => info!("OK from next server"),
+                    Err(_) => {
+                        if matches!(alive, true) {
+                            break;
+                        }
                     }
-
                 },
             }
         }
@@ -397,7 +401,12 @@ fn get_timestime_now() -> u128 {
     }
 }
 
-async fn wait_ok(message: String,conn: &mut TcpStream, disconnected: &mut bool, alive: bool ) -> Result<(), ()> {
+async fn wait_ok(
+    message: String,
+    conn: &mut TcpStream,
+    disconnected: &mut bool,
+    alive: bool,
+) -> Result<(), ()> {
     match conn.write_all(message.as_bytes()).await {
         Ok(_) => {
             debug!("Enviado. Esperando respuesta");
@@ -405,8 +414,8 @@ async fn wait_ok(message: String,conn: &mut TcpStream, disconnected: &mut bool, 
             match conn.read(&mut buffer).await {
                 Ok(u) => {
                     let res = String::from_utf8_lossy(&buffer);
-                    debug!("BUFFER:{}",res);
-                    if  u == 0 {
+                    debug!("BUFFER:{}", res);
+                    if u == 0 {
                         error!("Server disconnected");
                         *disconnected = true;
                         Err(())

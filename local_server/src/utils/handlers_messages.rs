@@ -43,7 +43,10 @@ pub mod handlers_messager {
                                 let mut s = state.lock().await;
                                 *s = false;
                                 let message = String::from("KILL");
-                                sender_copy.send(message).await.expect("could not send recovery message");
+                                sender_copy
+                                    .send(message)
+                                    .await
+                                    .expect("could not send recovery message");
                                 warn!("KILL received - Now this server is offline");
                             }
                             "UP" => {
@@ -88,7 +91,8 @@ pub mod handlers_messager {
         loop {
             // let mut line: String = String::new();
             let mut buf = Vec::new();
-            let timeout = time::timeout(Duration::from_secs(20), reader.read_until(b'\n', &mut buf));
+            let timeout =
+                time::timeout(Duration::from_secs(20), reader.read_until(b'\n', &mut buf));
             match timeout.await {
                 Ok(result) => match result {
                     Ok(0) => {
@@ -300,7 +304,7 @@ pub mod handlers_messager {
                             }
                             "BYE" => {
                                 let mut send_token = false;
-                                
+
                                 {
                                     let t = token.lock().await;
                                     if t.is_avaliable() {
@@ -314,7 +318,10 @@ pub mod handlers_messager {
                                     }
                                 }
                                 if send_token {
-                                    sender.send("SEND\n".to_string()).await.expect("failed to send token");
+                                    sender
+                                        .send("SEND\n".to_string())
+                                        .await
+                                        .expect("failed to send token");
                                 }
                                 break;
                             }
@@ -329,7 +336,6 @@ pub mod handlers_messager {
                         if response.as_str() == "UNK" {
                             break;
                         }
-                
                     } else {
                         break;
                     }
