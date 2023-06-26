@@ -88,7 +88,7 @@ pub mod handlers_messager {
         loop {
             // let mut line: String = String::new();
             let mut buf = Vec::new();
-            let timeout = time::timeout(Duration::from_secs(15), reader.read_until(b'\n', &mut buf));
+            let timeout = time::timeout(Duration::from_secs(20), reader.read_until(b'\n', &mut buf));
             match timeout.await {
                 Ok(result) => match result {
                     Ok(0) => {
@@ -131,7 +131,7 @@ pub mod handlers_messager {
                                         }
 
                                         if empty {
-                                            thread::sleep(Duration::from_secs(3));
+                                            thread::sleep(Duration::from_secs(1));
                                             debug!("No REQ messages next server");
                                             sync_next(server, sender_copy).await;
                                             debug!("Send token to next server");
@@ -216,6 +216,7 @@ pub mod handlers_messager {
             let server = server_actor_address.clone();
             let sender_copy = sender.clone();
             let mut line = String::new();
+            info!("ABOUT TO WAIT READING");
             match reader.read_line(&mut line).await {
                 Ok(u) => {
                     if u > 0 {
@@ -297,6 +298,26 @@ pub mod handlers_messager {
 
                                 res
                             }
+                            "BYE" => {
+                                let mut send_token = false;
+                                
+                                {
+                                    let t = token.lock().await;
+                                    if t.is_avaliable() {
+                                        send_token = true;
+                                    }
+                                }
+                                {
+                                    let c = connections.lock().await;
+                                    if *c > 0 {
+                                        send_token = false;
+                                    }
+                                }
+                                if send_token {
+                                    sender.send("SEND\n".to_string()).await.expect("failed to send token");
+                                }
+                                break;
+                            }
                             _ => {
                                 error!("Unkown operation");
                                 let res = "UNK".to_string();
@@ -308,6 +329,9 @@ pub mod handlers_messager {
                         if response.as_str() == "UNK" {
                             break;
                         }
+                        info!("TERMINE DE MANDAR EL NOT ACK");
+                    } else {
+                        break;
                     }
                 }
                 Err(_) => {
@@ -316,6 +340,8 @@ pub mod handlers_messager {
                 }
             };
         }
+        info!("TERMINE DE MANDAR EL NOT ACK");
+
     }
 
     async fn handle_add_message(
@@ -462,18 +488,21 @@ pub mod handlers_messager {
             customer_id,
             points,
         };
+        let response: String;
         match server.send(msg).await.unwrap() {
             Ok(_) => {
-                return "OK\n".to_string();
+                response = "OK\n".to_string();
             }
             Err(_) => {
                 error!(
                     "Error trying to block {} points for account {}",
                     points, customer_id
                 );
-                return "NOT OK\n".to_string();
+                response = "NOT OK\n".to_string();
             }
         }
+        notify.notify_one();
+        response
     }
 
     async fn sync_next(server_address: Addr<LocalServer>, sender: Sender<String>) {

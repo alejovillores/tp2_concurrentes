@@ -75,7 +75,7 @@ async fn main() {
 
         loop {
             let mut next_order;
-            thread::sleep(Duration::from_secs(10));
+            thread::sleep(Duration::from_secs(3));
 
             let take_order_result = addr.send(TakeOrder {}).await;
             match take_order_result {
@@ -86,12 +86,17 @@ async fn main() {
                     }
                     None => {
                         info!("There are no more orders left to prepare");
+                        let end_message = "BYE \n".to_string();
+                        match send(&mut stream, end_message) {
+                            Ok(_) => {}
+                            Err(e) => error!("{}", e),
+                        }
                         break;
                     }
                 },
                 Err(_) => {
                     warn!("There are no more orders left to prepare");
-                    let end_message = "REQ \n".to_string();
+                    let end_message = "BYE \n".to_string();
                     match send(&mut stream, end_message) {
                         Ok(_) => {}
                         Err(e) => error!("{}", e),
