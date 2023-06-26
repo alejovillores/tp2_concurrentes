@@ -2,7 +2,6 @@ extern crate actix;
 
 use actix::{Actor, Handler, SyncContext};
 use log::{error, info};
-use std::borrow::BorrowMut;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 
@@ -192,7 +191,7 @@ impl Handler<SyncNextServer> for LocalServer {
             account_dup.points = account.points;
             accounts.push(account_dup);
         }
-        info!("Sync next accounts: {:?} a enviar", accounts);
+        info!("Accounts State: {:?}", accounts);
         accounts
     }
 }

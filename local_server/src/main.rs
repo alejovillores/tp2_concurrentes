@@ -34,7 +34,7 @@ async fn main() {
     let notify: Arc<Notify> = Arc::new(Notify::new());
     let coffee_makers = Arc::new(Mutex::new(0));
     let state: Arc<Mutex<bool>> = Arc::new(Mutex::new(true));
-    let (tx, mut rx): (Sender<String>, Receiver<String>) = mpsc::channel(1);
+    let (tx, rx): (Sender<String>, Receiver<String>) = mpsc::channel(1);
     let server_actor_copy_1 = server_actor_address.clone();
     let state_clone = state.clone();
     let rn = tokio::spawn(async move {
@@ -75,7 +75,7 @@ async fn main() {
         }
     });
 
-    join!(rn, server);
+    let _ = join!(rn, server);
 }
 
 async fn handle_right_neighbor(
@@ -117,7 +117,7 @@ async fn handle_right_neighbor(
                 .expect("could not send token");
 
             let mut buffer = [0; 1024];
-            conn.read(&mut buffer).await;
+            let _ = conn.read(&mut buffer).await;
             let res = String::from_utf8_lossy(&buffer);
             debug!("1er BUFFER:{}", res);
         }
@@ -269,39 +269,6 @@ async fn handle_right_neighbor(
                         },
                     }
 
-                }
-                _ => match conn.write_all(message.as_bytes()).await {
-                    Ok(_) => {
-                        debug!("Enviado. Esperando respuesta");
-                        let mut buffer = [0; 1024];
-                        match conn.read(&mut buffer).await {
-                            Ok(u) => {
-                                let res = String::from_utf8_lossy(&buffer);
-                                debug!("BUFFER:{}", res);
-                                if u == 0 {
-                                    error!("Server disconnected");
-                                    disconnected = true;
-                                    break;
-                                } else {
-                                    debug!("Mensaje enviado");
-                                }
-                            }
-                            Err(e) => {
-                                error!("Can't get answer from server: {}", e);
-                                disconnected = true;
-                                break;
-                            }
-                        }
-                    }
-                    Err(_) => {
-                        debug!("Falla la escritura tcp");
-                        if matches!(alive, false) {
-                            continue;
-                        }
-                        error!("Server disconnecteed");
-                        disconnected = true;
-                        break;
-                    }
                 },
             }
         }

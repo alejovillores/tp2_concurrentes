@@ -85,7 +85,6 @@ pub mod handlers_messager {
     ) {
         debug!("Reading from neighbor");
         let mut cont = 0;
-        let mut last_accounts_updated: u128 = 0;
         loop {
             // let mut line: String = String::new();
             let mut buf = Vec::new();
